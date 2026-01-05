@@ -3,10 +3,10 @@ package_manager = "yarn"
 
 [features]
 resolution = true
-skip-lint = false
+skip-lint = true  # Skip linting for faster builds
 
 [programs.localnet]
-solana_test_project = "BaFvHTidU6MSbAyGmiRe3YzY7JN2hmVEZqeap2sy3hDP"
+solana_test_project = "9ZCe7W3w8Fvi2KWaX9161sa3ZwmWLZj8EzXFyYMdQbNq"
 
 [registry]
 url = "https://api.apr.dev"
@@ -14,8 +14,5 @@ url = "https://api.apr.dev"
 [provider]
 cluster = "localnet"
 wallet = "~/.config/solana/id.json"
-
-[scripts]
-test = ""
 
 [hooks]

@@ -3,14 +3,18 @@ import { Program } from "@coral-xyz/anchor";
 import { SolanaTestProject } from "../target/types/solana_test_project";
 
 describe("solana_test_project", () => {
-  // Configure the client to use the local cluster.
-  anchor.setProvider(anchor.AnchorProvider.env());
+  const provider = anchor.AnchorProvider.env();
+  anchor.setProvider(provider);
 
-  const program = anchor.workspace.solanaTestProject as Program<SolanaTestProject>;
+  const program = anchor.workspace
+    .SolanaTestProject as Program<SolanaTestProject>;
 
-  it("Is initialized!", async () => {
-    // Add your test here.
-    const tx = await program.methods.initialize().rpc();
-    console.log("Your transaction signature", tx);
+  it("Runs hello instruction", async () => {
+    await program.methods
+      .hello()
+      .accounts({})
+      .rpc();
+
+    console.log(" hello instruction executed");
   });
 });
