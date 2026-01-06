@@ -6,7 +6,7 @@ resolution = true
 skip-lint = true  # Skip linting for faster builds
 
 [programs.localnet]
-solana_test_project = "9ZCe7W3w8Fvi2KWaX9161sa3ZwmWLZj8EzXFyYMdQbNq"
+solana_test_project = "J2EkyNbg97YGxqdihVxe2Ey5AEBcR7QbA97JVpR4R4D8"
 
 [registry]
 url = "https://api.apr.dev"

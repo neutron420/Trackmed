@@ -11,7 +11,7 @@ pub mod verify_batch;
 pub mod verify_batch_by_pda;
 pub mod check_and_update_expiry;
 
-declare_id!("9ZCe7W3w8Fvi2KWaX9161sa3ZwmWLZj8EzXFyYMdQbNq");
+declare_id!("J2EkyNbg97YGxqdihVxe2Ey5AEBcR7QbA97JVpR4R4D8");
 
 // Account structs defined directly in lib.rs to work around Anchor 0.32.1 macro bug
 #[derive(Accounts)]
