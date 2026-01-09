@@ -1,14 +1,20 @@
 use anchor_lang::prelude::*;
-use crate::state::BatchStatus;
+use crate::state::{BatchStatus, DosageForm};
 
 #[event]
 pub struct BatchRegistered {
     pub batch_id: String,
-    pub medicine_name: String,
+    pub brand_name: String,
+    pub generic_name: String,
     pub manufacturer: Pubkey,
     pub batch_pda: Pubkey,
     pub manufacturing_date: i64,
     pub expiry_date: i64,
+    pub mrp: u64,
+    pub quantity_received: u32,
+    pub dosage_form: DosageForm,
+    pub strength: String,
+    pub composition: String,
     pub timestamp: i64,
 }
 
@@ -26,7 +32,8 @@ pub struct BatchStatusUpdated {
 pub struct BatchVerified {
     pub batch_id: String,
     pub batch_pda: Pubkey,
-    pub medicine_name: String,
+    pub brand_name: String,
+    pub generic_name: String,
     pub manufacturer: Pubkey,
     pub status: BatchStatus,
     pub is_expired: bool,
