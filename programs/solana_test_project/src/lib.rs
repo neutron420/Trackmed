@@ -11,7 +11,7 @@ pub mod verify_batch;
 pub mod verify_batch_by_pda;
 pub mod check_and_update_expiry;
 
-declare_id!("J2EkyNbg97YGxqdihVxe2Ey5AEBcR7QbA97JVpR4R4D8");
+declare_id!("48BYj4BVCp7D3EByu6f9nW8uHaFuuFdwJozB7iLZPxhJ");
 
 // Account structs defined directly in lib.rs to work around Anchor 0.32.1 macro bug
 #[derive(Accounts)]
@@ -87,17 +87,45 @@ pub mod solana_test_project {
 
     pub fn register_batch(
         ctx: Context<RegisterBatch>,
+        brand_name: String,
+        generic_name: String,
         batch_id: String,
-        medicine_name: String,
         manufacturing_date: i64,
         expiry_date: i64,
+        mrp: u64,
+        quantity_received: u32,
+        dosage_form: state::DosageForm,
+        strength: String,
+        composition: String,
+        manufacturer_name: String,
+        manufacturer_license: String,
+        manufacturer_address: String,
+        storage_condition: state::StorageCondition,
+        physical_condition: state::PhysicalCondition,
+        invoice_number: String,
+        invoice_date: i64,
+        gst_number: String,
     ) -> Result<()> {
         register_batch::handler(
             ctx,
+            brand_name,
+            generic_name,
             batch_id,
-            medicine_name,
             manufacturing_date,
             expiry_date,
+            mrp,
+            quantity_received,
+            dosage_form,
+            strength,
+            composition,
+            manufacturer_name,
+            manufacturer_license,
+            manufacturer_address,
+            storage_condition,
+            physical_condition,
+            invoice_number,
+            invoice_date,
+            gst_number,
         )
     }
 

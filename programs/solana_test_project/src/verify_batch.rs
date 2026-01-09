@@ -12,7 +12,8 @@ pub fn handler(ctx: Context<VerifyBatch>, _batch_id: String) -> Result<()> {
     emit!(BatchVerified {
         batch_id: batch.batch_id.clone(),
         batch_pda: batch.key(),
-        medicine_name: batch.medicine_name.clone(),
+        brand_name: batch.brand_name.clone(),
+        generic_name: batch.generic_name.clone(),
         manufacturer: batch.manufacturer,
         status: batch.status,
         is_expired,
@@ -21,9 +22,10 @@ pub fn handler(ctx: Context<VerifyBatch>, _batch_id: String) -> Result<()> {
     });
     
     msg!(
-        "Batch verification: ID={}, Medicine={}, Status={:?}, Expired={}, Valid={}",
+        "Batch verification: ID={}, Brand={}, Generic={}, Status={:?}, Expired={}, Valid={}",
         batch.batch_id,
-        batch.medicine_name,
+        batch.brand_name,
+        batch.generic_name,
         batch.status,
         is_expired,
         is_valid
