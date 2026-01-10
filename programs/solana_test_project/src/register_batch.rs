@@ -6,14 +6,13 @@ use crate::RegisterBatch;
 
 pub fn handler(
     ctx: Context<RegisterBatch>,
-    batch_id: String,
+    batch_hash: String,
     manufacturing_date: i64,
     expiry_date: i64,
-    metadata_hash: Option<String>,
 ) -> Result<()> {
-    // Validation: Batch ID
-    require!(!batch_id.is_empty(), ErrorCode::EmptyBatchId);
-    require!(batch_id.len() <= 50, ErrorCode::BatchIdTooLong);
+    // Validation: Batch hash
+    require!(!batch_hash.is_empty(), ErrorCode::EmptyBatchId);
+    require!(batch_hash.len() <= 64, ErrorCode::BatchIdTooLong);
     
     // Validation: Date validation
     require!(expiry_date > manufacturing_date, ErrorCode::InvalidDateRange);
@@ -21,39 +20,24 @@ pub fn handler(
     let clock = Clock::get()?;
     // Check if medicine is expired
     require!(expiry_date > clock.unix_timestamp, ErrorCode::ExpiredMedicine);
-    
-    // Check for near-expiry (within 30 days) - warning but allow
-    let days_until_expiry = (expiry_date - clock.unix_timestamp) / 86400;
-    if days_until_expiry <= 30 {
-        // Log warning but don't block registration
-        msg!("Warning: Medicine expires in {} days", days_until_expiry);
-    }
-    
-    // Validation: Metadata hash if provided
-    if let Some(ref hash) = metadata_hash {
-        require!(hash.len() <= 64, ErrorCode::BatchIdTooLong);
-    }
 
     let batch = &mut ctx.accounts.batch;
 
-    // Essential fields only
-    batch.batch_id = batch_id.clone();
-    batch.manufacturer = ctx.accounts.manufacturer.key();
+    // Essential fields only - blockchain stores ONLY immutable proof
+    batch.batch_hash = batch_hash.clone();
+    batch.manufacturer_wallet = ctx.accounts.manufacturer.key();
     batch.manufacturing_date = manufacturing_date;
     batch.expiry_date = expiry_date;
-    batch.status = BatchStatus::Active;
+    batch.status = BatchStatus::Valid;
     batch.created_at = clock.unix_timestamp;
-    batch.updated_at = clock.unix_timestamp;
     batch.bump = ctx.bumps.batch;
-    batch.metadata_hash = metadata_hash;
 
     emit!(BatchRegistered {
-        batch_id: batch.batch_id.clone(),
+        batch_hash: batch.batch_hash.clone(),
         batch_pda: batch.key(),
-        manufacturer: batch.manufacturer,
+        manufacturer_wallet: batch.manufacturer_wallet,
         manufacturing_date,
         expiry_date,
-        metadata_hash: batch.metadata_hash.clone(),
         timestamp: clock.unix_timestamp,
     });
 

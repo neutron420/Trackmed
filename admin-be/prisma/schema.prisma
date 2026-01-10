@@ -5,10 +5,257 @@
 // Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
 
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+
+// User accounts and roles
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  passwordHash  String   @map("password_hash")
+  name          String?
+  role          UserRole @default(SCANNER)
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  scanLogs      ScanLog[]
+  fraudAlerts   FraudAlert[]
+
+  @@map("users")
+}
+
+enum UserRole {
+  ADMIN
+  SUPERADMIN
+  MANUFACTURER
+  DISTRIBUTOR
+  PHARMACY
+  SCANNER
+  CONSUMER
+}
+
+// Manufacturer textual details (NOT wallet - wallet is on blockchain)
+model Manufacturer {
+  id              String   @id @default(cuid())
+  name            String
+  licenseNumber   String   @unique @map("license_number")
+  address         String
+  city            String?
+  state           String?
+  country         String   @default("India")
+  phone           String?
+  email           String?
+  gstNumber       String?  @map("gst_number")
+  walletAddress   String   @unique @map("wallet_address") // Links to blockchain manufacturer_wallet
+  isVerified      Boolean  @default(false) @map("is_verified")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  batches         Batch[]
+
+  @@map("manufacturers")
+}
+
+// Medicine details (all business information)
+model Medicine {
+  id              String   @id @default(cuid())
+  name            String
+  genericName     String?  @map("generic_name")
+  strength        String
+  composition     String
+  dosageForm      String   @map("dosage_form") // Tablet, Capsule, Syrup, etc.
+  mrp             Decimal  @db.Decimal(10, 2)
+  storageCondition String? @map("storage_condition")
+  imageUrl        String?  @map("image_url")
+  description     String?  @db.Text
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  batches         Batch[]
+
+  @@map("medicines")
+}
+
+// Batch - stores proof fields (same as blockchain) + all business details
+model Batch {
+  id                  String   @id @default(cuid())
+  
+  // Proof fields (stored on both blockchain and database)
+  batchHash           String   @unique @map("batch_hash") // Same as blockchain batch_hash
+  manufacturingDate   DateTime @map("manufacturing_date") // Same as blockchain
+  expiryDate          DateTime @map("expiry_date") // Same as blockchain
+  status              BatchStatus @default(VALID) // Same as blockchain (Valid/Recalled)
+  createdAt           DateTime @default(now()) @map("created_at") // Same as blockchain
+  
+  // Blockchain transaction reference
+  blockchainTxHash    String?  @unique @map("blockchain_tx_hash") // Transaction hash from blockchain registration
+  blockchainPda       String?  @unique @map("blockchain_pda") // PDA address on Solana
+  
+  // Business details (database only)
+  batchNumber         String   @unique @map("batch_number") // Human-readable batch number
+  manufacturerId      String   @map("manufacturer_id")
+  medicineId          String   @map("medicine_id")
+  quantity            Int
+  invoiceNumber       String?  @map("invoice_number")
+  invoiceDate         DateTime? @map("invoice_date")
+  gstNumber           String?  @map("gst_number")
+  
+  // Warehouse and lifecycle info (database only)
+  warehouseLocation   String?  @map("warehouse_location")
+  warehouseAddress    String?  @map("warehouse_address") @db.Text
+  lifecycleStatus     LifecycleStatus @default(IN_PRODUCTION) @map("lifecycle_status")
+  
+  // Timestamps
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  manufacturer        Manufacturer @relation(fields: [manufacturerId], references: [id])
+  medicine            Medicine @relation(fields: [medicineId], references: [id])
+  qrCodes            QRCode[]
+  scanLogs            ScanLog[]
+
+  @@index([batchHash])
+  @@index([manufacturerId])
+  @@index([medicineId])
+  @@index([blockchainTxHash])
+  @@map("batches")
+}
+
+enum BatchStatus {
+  VALID
+  RECALLED
+}
+
+enum LifecycleStatus {
+  IN_PRODUCTION
+  IN_TRANSIT
+  AT_DISTRIBUTOR
+  AT_PHARMACY
+  SOLD
+  EXPIRED
+  RECALLED
+}
+
+// QR code mappings
+model QRCode {
+  id              String   @id @default(cuid())
+  code            String   @unique // The actual QR code string
+  batchId         String   @map("batch_id")
+  unitNumber      Int?     @map("unit_number") // Unit number within batch (1, 2, 3...)
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  batch           Batch @relation(fields: [batchId], references: [id])
+  scanLogs        ScanLog[]
+
+  @@index([code])
+  @@index([batchId])
+  @@map("qr_codes")
+}
+
+// Scan logs and device/location data
+model ScanLog {
+  id              String   @id @default(cuid())
+  qrCodeId        String   @map("qr_code_id")
+  batchId         String   @map("batch_id")
+  userId          String?  @map("user_id") // Optional - anonymous scans allowed
+  deviceId        String?  @map("device_id")
+  deviceModel     String?  @map("device_model")
+  deviceOS        String?  @map("device_os")
+  appVersion      String?  @map("app_version")
+  locationLat     Decimal? @map("location_lat") @db.Decimal(10, 8)
+  locationLng     Decimal? @map("location_lng") @db.Decimal(10, 8)
+  locationAddress String?  @map("location_address") @db.Text
+  scanType        ScanType @default(VERIFICATION) @map("scan_type")
+  blockchainVerified Boolean @default(false) @map("blockchain_verified") // Whether blockchain check passed
+  blockchainStatus String?  @map("blockchain_status") // Status from blockchain at time of scan
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  // Relations
+  qrCode          QRCode @relation(fields: [qrCodeId], references: [id])
+  batch           Batch @relation(fields: [batchId], references: [id])
+  user            User? @relation(fields: [userId], references: [id])
+
+  @@index([qrCodeId])
+  @@index([batchId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("scan_logs")
+}
+
+enum ScanType {
+  VERIFICATION
+  PURCHASE
+  DISTRIBUTION
+  RECALL_CHECK
+}
+
+// Fraud alerts
+model FraudAlert {
+  id              String   @id @default(cuid())
+  batchId         String?  @map("batch_id")
+  qrCodeId        String?  @map("qr_code_id")
+  userId          String?  @map("user_id")
+  alertType       FraudAlertType @map("alert_type")
+  severity        FraudSeverity @default(MEDIUM)
+  description     String   @db.Text
+  evidence        Json?    // Additional evidence data
+  isResolved      Boolean  @default(false) @map("is_resolved")
+  resolvedAt      DateTime? @map("resolved_at")
+  resolvedBy      String?  @map("resolved_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user            User? @relation(fields: [userId], references: [id])
+
+  @@index([batchId])
+  @@index([qrCodeId])
+  @@index([isResolved])
+  @@index([createdAt])
+  @@map("fraud_alerts")
+}
+
+enum FraudAlertType {
+  DUPLICATE_QR_CODE
+  INVALID_BATCH_HASH
+  EXPIRED_MEDICINE
+  RECALLED_BATCH
+  LOCATION_MISMATCH
+  FREQUENT_SCANS
+  UNAUTHORIZED_ACCESS
+  BLOCKCHAIN_MISMATCH
+}
+
+enum FraudSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+// Analytics and reports (aggregated data)
+model Analytics {
+  id              String   @id @default(cuid())
+  date            DateTime @db.Date
+  metricType      String   @map("metric_type")
+  metricValue     Decimal  @db.Decimal(15, 2) @map("metric_value")
+  metadata        Json?
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@unique([date, metricType])
+  @@index([date])
+  @@map("analytics")
 }

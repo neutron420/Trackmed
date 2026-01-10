@@ -30,13 +30,13 @@ pub struct RegisterManufacturer<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(batch_id: String)]
+#[instruction(batch_hash: String)]
 pub struct RegisterBatch<'info> {
     #[account(
         init,
         payer = manufacturer,
         space = state::Batch::MAX_SIZE,
-        seeds = [b"batch", manufacturer.key().as_ref(), batch_id.as_bytes()],
+        seeds = [b"batch", manufacturer.key().as_ref(), batch_hash.as_bytes()],
         bump
     )]
     pub batch: Account<'info, state::Batch>,
@@ -55,13 +55,13 @@ pub struct RegisterBatch<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(batch_id: String)]
+#[instruction(batch_hash: String)]
 pub struct UpdateBatchStatus<'info> {
     #[account(
         mut,
-        seeds = [b"batch", manufacturer.key().as_ref(), batch_id.as_bytes()],
+        seeds = [b"batch", manufacturer.key().as_ref(), batch_hash.as_bytes()],
         bump = batch.bump,
-        has_one = manufacturer @ error::ErrorCode::UnauthorizedManufacturer
+        constraint = batch.manufacturer_wallet == manufacturer.key() @ error::ErrorCode::UnauthorizedManufacturer
     )]
     pub batch: Account<'info, state::Batch>,
     
@@ -79,25 +79,23 @@ pub mod solana_test_project {
 
     pub fn register_batch(
         ctx: Context<RegisterBatch>,
-        batch_id: String,
+        batch_hash: String,
         manufacturing_date: i64,
         expiry_date: i64,
-        metadata_hash: Option<String>,
     ) -> Result<()> {
         register_batch::handler(
             ctx,
-            batch_id,
+            batch_hash,
             manufacturing_date,
             expiry_date,
-            metadata_hash,
         )
     }
 
     pub fn update_batch_status(
         ctx: Context<UpdateBatchStatus>,
-        batch_id: String,
+        batch_hash: String,
         new_status: state::BatchStatus,
     ) -> Result<()> {
-        update_batch_status::handler(ctx, batch_id, new_status)
+        update_batch_status::handler(ctx, batch_hash, new_status)
     }
 }
