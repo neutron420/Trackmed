@@ -67,4 +67,10 @@ pub enum ErrorCode {
     
     #[msg("Invalid physical condition - medicine must be in good condition")]
     InvalidPhysicalCondition,
+    
+    #[msg("Manufacturer is not verified in the registry")]
+    ManufacturerNotVerified,
+    
+    #[msg("Manufacturer is already registered")]
+    ManufacturerAlreadyRegistered,
 }

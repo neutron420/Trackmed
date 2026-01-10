@@ -1,10 +1,9 @@
 use anchor_lang::prelude::*;
 use crate::state::BatchStatus;
 use crate::events::BatchStatusUpdated;
-use crate::UpdateBatchStatus;
 
 pub fn handler(
-    ctx: Context<UpdateBatchStatus>,
+    ctx: Context<crate::UpdateBatchStatus>,
     _batch_id: String,
     new_status: BatchStatus,
 ) -> Result<()> {
