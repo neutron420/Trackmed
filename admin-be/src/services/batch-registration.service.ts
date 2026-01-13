@@ -4,6 +4,7 @@ import * as anchor from '@coral-xyz/anchor';
 import { Program } from '@coral-xyz/anchor';
 import { connection, deriveBatchPDA, deriveManufacturerRegistryPDA, PROGRAM_ID } from '../config/solana';
 import { IDL } from '../idl/solana_test_project';
+import { createAuditTrail } from './audit-trail.service';
 
 /**
  * Register batch on both blockchain and database
@@ -148,6 +149,7 @@ export async function registerBatch(
         manufacturerId: data.manufacturerId,
         medicineId: data.medicineId,
         quantity: data.quantity,
+        remainingQuantity: data.quantity, // Initialize remaining quantity
         invoiceNumber: data.invoiceNumber,
         invoiceDate: data.invoiceDate,
         gstNumber: data.gstNumber,
@@ -156,6 +158,8 @@ export async function registerBatch(
         lifecycleStatus: 'IN_PRODUCTION',
       },
     });
+
+    // Create audit trail (will be called from route with user context)
 
     const result: {
       success: boolean;
@@ -241,12 +245,14 @@ export async function updateBatchStatus(
       .rpc();
 
     // Step 3: Update in database
-    await prisma.batch.update({
+    const updatedBatch = await prisma.batch.update({
       where: { batchHash },
       data: {
         status: newStatus,
       },
     });
+
+    // Create audit trail (will be called from route with user context)
 
     return {
       success: true,

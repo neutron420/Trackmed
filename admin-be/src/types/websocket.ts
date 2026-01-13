@@ -1,4 +1,4 @@
-import { WebSocket } from 'ws';
+import WebSocket from 'ws';
 import { UserRole } from '@prisma/client';
 
 export interface WebSocketClient {

@@ -105,8 +105,12 @@ router.post('/alerts', async (req: Request, res: Response) => {
  */
 router.patch('/alerts/:id/resolve', async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    let { id } = req.params;
     const { resolvedBy } = req.body;
+
+    if (Array.isArray(id)) {
+      id = id[0];
+    }
 
     const alert = await prisma.fraudAlert.update({
       where: { id },

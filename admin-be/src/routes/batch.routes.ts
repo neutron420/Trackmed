@@ -2,10 +2,16 @@ import { Router } from 'express';
 import type { Request, Response } from 'express';
 import { verifyAndGetBatch, verifyQRCode, logScan } from '../services/batch.service';
 import { registerBatch, updateBatchStatus } from '../services/batch-registration.service';
+import { createAuditTrail } from '../services/audit-trail.service';
+import { sendBatchRecall } from '../services/notification.service';
+import prisma from '../config/database';
 import { Keypair } from '@solana/web3.js';
 import bs58 from 'bs58';
 
 const router = Router();
+
+const asString = (value: string | string[] | undefined): string | undefined =>
+  Array.isArray(value) ? value[0] : value;
 
 /**
  * POST /api/batch/register
@@ -66,6 +72,20 @@ router.post('/register', async (req: Request, res: Response) => {
       });
     }
 
+    // Create audit trail
+    const userId = (req as any).user?.userId || 'system';
+    const userRole = (req as any).user?.role || 'MANUFACTURER';
+    if (result.batchId) {
+      await createAuditTrail({
+        entityType: 'BATCH',
+        entityId: result.batchId,
+        action: 'CREATE',
+        performedBy: userId,
+        performedByRole: userRole,
+        metadata: { batchNumber, batchHash },
+      });
+    }
+
     res.status(201).json({
       success: true,
       data: {
@@ -88,7 +108,7 @@ router.post('/register', async (req: Request, res: Response) => {
  */
 router.patch('/:batchHash/status', async (req: Request, res: Response) => {
   try {
-    const { batchHash } = req.params;
+    const batchHash = asString(req.params.batchHash);
     const { newStatus, manufacturerWalletPrivateKey } = req.body;
 
     if (!newStatus || (newStatus !== 'VALID' && newStatus !== 'RECALLED')) {
@@ -125,6 +145,32 @@ router.patch('/:batchHash/status', async (req: Request, res: Response) => {
       });
     }
 
+    // Get batch for audit trail and notification
+    const batch = await prisma.batch.findUnique({
+      where: { batchHash },
+    });
+
+    // Create audit trail
+    const userId = (req as any).user?.userId || 'system';
+    const userRole = (req as any).user?.role || 'MANUFACTURER';
+    if (batch) {
+      await createAuditTrail({
+        entityType: 'BATCH',
+        entityId: batch.id,
+        action: 'STATUS_CHANGE',
+        fieldName: 'status',
+        oldValue: batch.status,
+        newValue: newStatus,
+        performedBy: userId,
+        performedByRole: userRole,
+      });
+
+      // Send notification if recalled
+      if (newStatus === 'RECALLED' && batch.batchNumber) {
+        await sendBatchRecall(batch.id, batch.batchNumber);
+      }
+    }
+
     res.json({
       success: true,
       data: {
@@ -146,7 +192,7 @@ router.patch('/:batchHash/status', async (req: Request, res: Response) => {
  */
 router.get('/:batchHash', async (req: Request, res: Response) => {
   try {
-    const { batchHash } = req.params;
+    const batchHash = asString(req.params.batchHash);
 
     if (!batchHash) {
       return res.status(400).json({

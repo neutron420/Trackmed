@@ -58,13 +58,12 @@ router.get('/logs', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * GET /api/scan/logs/:batchId
- * Get scan logs for a specific batch
- */
 router.get('/logs/:batchId', async (req: Request, res: Response) => {
   try {
-    const { batchId } = req.params;
+    let batchId = req.params.batchId;
+    if (Array.isArray(batchId)) {
+      batchId = batchId[0];
+    }
 
     const logs = await prisma.scanLog.findMany({
       where: { batchId },

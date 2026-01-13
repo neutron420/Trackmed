@@ -106,6 +106,7 @@ model Batch {
   manufacturerId      String   @map("manufacturer_id")
   medicineId          String   @map("medicine_id")
   quantity            Int
+  remainingQuantity   Int      @default(0) @map("remaining_quantity") // Track remaining units
   invoiceNumber       String?  @map("invoice_number")
   invoiceDate         DateTime? @map("invoice_date")
   gstNumber           String?  @map("gst_number")
@@ -114,6 +115,8 @@ model Batch {
   warehouseLocation   String?  @map("warehouse_location")
   warehouseAddress    String?  @map("warehouse_address") @db.Text
   lifecycleStatus     LifecycleStatus @default(IN_PRODUCTION) @map("lifecycle_status")
+  distributorId       String?  @map("distributor_id")
+  pharmacyId          String?  @map("pharmacy_id")
   
   // Timestamps
   updatedAt           DateTime @updatedAt @map("updated_at")
@@ -121,6 +124,8 @@ model Batch {
   // Relations
   manufacturer        Manufacturer @relation(fields: [manufacturerId], references: [id])
   medicine            Medicine @relation(fields: [medicineId], references: [id])
+  distributor         Distributor? @relation(fields: [distributorId], references: [id])
+  pharmacy            Pharmacy? @relation(fields: [pharmacyId], references: [id])
   qrCodes            QRCode[]
   scanLogs            ScanLog[]
 
@@ -128,6 +133,9 @@ model Batch {
   @@index([manufacturerId])
   @@index([medicineId])
   @@index([blockchainTxHash])
+  @@index([distributorId])
+  @@index([pharmacyId])
+  @@index([lifecycleStatus])
   @@map("batches")
 }
 
@@ -258,4 +266,68 @@ model Analytics {
   @@unique([date, metricType])
   @@index([date])
   @@map("analytics")
+}
+
+// Distributor details
+model Distributor {
+  id              String   @id @default(cuid())
+  name            String
+  licenseNumber   String   @unique @map("license_number")
+  address         String
+  city            String?
+  state           String?
+  country         String   @default("India")
+  phone           String?
+  email           String?
+  gstNumber       String?  @map("gst_number")
+  isVerified      Boolean  @default(false) @map("is_verified")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  batches         Batch[]
+
+  @@map("distributors")
+}
+
+// Pharmacy details
+model Pharmacy {
+  id              String   @id @default(cuid())
+  name            String
+  licenseNumber   String   @unique @map("license_number")
+  address         String
+  city            String?
+  state           String?
+  country         String   @default("India")
+  phone           String?
+  email           String?
+  gstNumber       String?  @map("gst_number")
+  isVerified      Boolean  @default(false) @map("is_verified")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  batches         Batch[]
+
+  @@map("pharmacies")
+}
+
+// Audit trail for tracking all changes
+model AuditTrail {
+  id              String   @id @default(cuid())
+  entityType      String   @map("entity_type") // 'BATCH', 'MANUFACTURER', 'MEDICINE', etc.
+  entityId        String   @map("entity_id")
+  action          String   // 'CREATE', 'UPDATE', 'DELETE', 'STATUS_CHANGE', 'LIFECYCLE_CHANGE'
+  fieldName       String?  @map("field_name")
+  oldValue        String?  @map("old_value") @db.Text
+  newValue        String?  @map("new_value") @db.Text
+  performedBy     String   @map("performed_by") // User ID
+  performedByRole String?  @map("performed_by_role")
+  metadata        Json?    // Additional context
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([entityType, entityId])
+  @@index([performedBy])
+  @@index([createdAt])
+  @@map("audit_trails")
 }

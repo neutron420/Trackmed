@@ -28,11 +28,33 @@ import authRoutes from './routes/auth.routes';
 import batchRoutes from './routes/batch.routes';
 import scanRoutes from './routes/scan.routes';
 import fraudRoutes from './routes/fraud.routes';
+import manufacturerRoutes from './routes/manufacturer.routes';
+import medicineRoutes from './routes/medicine.routes';
+import qrCodeRoutes from './routes/qr-code.routes';
+import lifecycleRoutes from './routes/lifecycle.routes';
+import distributorRoutes from './routes/distributor.routes';
+import pharmacyRoutes from './routes/pharmacy.routes';
+import analyticsRoutes from './routes/analytics.routes';
+import userRoutes from './routes/user.routes';
+import batchSearchRoutes from './routes/batch-search.routes';
+import inventoryRoutes from './routes/inventory.routes';
+import auditTrailRoutes from './routes/audit-trail.routes';
 
 app.use('/api/auth', authRoutes);
 app.use('/api/batch', batchRoutes);
 app.use('/api/scan', scanRoutes);
 app.use('/api/fraud', fraudRoutes);
+app.use('/api/manufacturer', manufacturerRoutes);
+app.use('/api/medicine', medicineRoutes);
+app.use('/api/qr-code', qrCodeRoutes);
+app.use('/api/lifecycle', lifecycleRoutes);
+app.use('/api/distributor', distributorRoutes);
+app.use('/api/pharmacy', pharmacyRoutes);
+app.use('/api/analytics', analyticsRoutes);
+app.use('/api/user', userRoutes);
+app.use('/api/batch-search', batchSearchRoutes);
+app.use('/api/inventory', inventoryRoutes);
+app.use('/api/audit-trail', auditTrailRoutes);
 
 // Error handling middleware
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
