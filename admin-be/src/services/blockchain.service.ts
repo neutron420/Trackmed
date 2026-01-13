@@ -35,7 +35,6 @@ export async function verifyBatchOnBlockchain(
       return { exists: false, error: 'Batch not found on blockchain' };
     }
 
-    // Decode account data using Anchor
     const provider = new anchor.AnchorProvider(connection, {} as anchor.Wallet, {
       commitment: 'confirmed',
     });
@@ -44,7 +43,7 @@ export async function verifyBatchOnBlockchain(
     const accounts = program.account as any;
     const batchAccount = await accounts.batch.fetch(batchPDA);
     
-    // Convert to our interface format
+
     const batchData: BlockchainBatch = {
       batchHash: batchAccount.batchHash,
       manufacturerWallet: batchAccount.manufacturerWallet,
@@ -62,14 +61,12 @@ export async function verifyBatchOnBlockchain(
   } catch (error: any) {
     return {
       exists: false,
-      error: error.message || 'Failed to verify batch on blockchain',
+      error: error.message || 'Failed to verify bathc on blockchain' ,
     };
   }
 }
 
-/**
- * Check if batch status is valid (not recalled)
- */
+
 export function isBatchValid(status: { valid?: {}; recalled?: {} }): boolean {
   return 'valid' in status;
 }
