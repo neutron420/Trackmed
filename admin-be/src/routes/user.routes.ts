@@ -7,10 +7,7 @@ import { createAuditTrail } from '../services/audit-trail.service';
 
 const router = Router();
 
-/**
- * GET /api/user
- * Get all users with pagination
- */
+
 router.get('/', async (req: Request, res: Response) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
@@ -67,10 +64,7 @@ router.get('/', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * GET /api/user/:id
- * Get user by ID
- */
+
 router.get('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
