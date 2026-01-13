@@ -14,10 +14,7 @@ export interface BlockchainBatch {
   createdAt: anchor.BN;
 }
 
-/**
- * Verify batch exists on blockchain and fetch its data
- * This is the ONLY source of truth for batch authenticity
- */
+
 export async function verifyBatchOnBlockchain(
   batchHash: string,
   manufacturerWallet: string
