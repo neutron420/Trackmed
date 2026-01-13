@@ -13,11 +13,7 @@ const router = Router();
 const asString = (value: string | string[] | undefined): string | undefined =>
   Array.isArray(value) ? value[0] : value;
 
-/**
- * POST /api/batch/register
- * Register a new batch on both blockchain and database
- * Requires manufacturer wallet private key in request
- */
+
 router.post('/register', async (req: Request, res: Response) => {
   try {
     const {
