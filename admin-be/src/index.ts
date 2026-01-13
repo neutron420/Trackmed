@@ -22,6 +22,32 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Root API endpoint
+app.get('/api', (req, res) => {
+  res.json({
+    success: true,
+    service: 'TrackMed Backend API',
+    version: '1.0.0',
+    timestamp: new Date().toISOString(),
+    endpoints: {
+      auth: '/api/auth',
+      batch: '/api/batch',
+      scan: '/api/scan',
+      fraud: '/api/fraud',
+      manufacturer: '/api/manufacturer',
+      medicine: '/api/medicine',
+      qrCode: '/api/qr-code',
+      lifecycle: '/api/lifecycle',
+      distributor: '/api/distributor',
+      pharmacy: '/api/pharmacy',
+      analytics: '/api/analytics',
+      user: '/api/user',
+      batchSearch: '/api/batch-search',
+      inventory: '/api/inventory',
+      auditTrail: '/api/audit-trail',
+    },
+  });
+});
 
 import authRoutes from './routes/auth.routes';
 import batchRoutes from './routes/batch.routes';
