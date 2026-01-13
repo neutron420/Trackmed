@@ -4,7 +4,6 @@ import * as anchor from '@coral-xyz/anchor';
 import { Program } from '@coral-xyz/anchor';
 import { IDL } from '../idl/solana_test_project';
 
-// Blockchain Batch data structure (matches on-chain struct)
 export interface BlockchainBatch {
   batchHash: string;
   manufacturerWallet: PublicKey;
