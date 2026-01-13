@@ -23,7 +23,7 @@ app.get('/health', (req, res) => {
   });
 });
 
-// API Routes
+
 import authRoutes from './routes/auth.routes';
 import batchRoutes from './routes/batch.routes';
 import scanRoutes from './routes/scan.routes';
