@@ -102,10 +102,7 @@ router.get('/:id', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * POST /api/user
- * Create a new user
- */
+
 router.post('/', async (req: Request, res: Response) => {
   try {
     const { email, password, name, role } = req.body;
