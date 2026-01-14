@@ -20,14 +20,23 @@ model User {
   email         String   @unique
   passwordHash  String   @map("password_hash")
   name          String?
+  phone         String?
+  avatarUrl     String?  @map("avatar_url")
   role          UserRole @default(SCANNER)
   isActive      Boolean  @default(true) @map("is_active")
+  isEmailVerified Boolean @default(false) @map("is_email_verified")
+  isPhoneVerified Boolean @default(false) @map("is_phone_verified")
+  lastLoginAt   DateTime? @map("last_login_at")
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
   // Relations
   scanLogs      ScanLog[]
   fraudAlerts   FraudAlert[]
+  addresses     Address[]
+  cart          Cart?
+  orders        Order[]
+  refreshTokens RefreshToken[]
 
   @@map("users")
 }
@@ -128,6 +137,8 @@ model Batch {
   pharmacy            Pharmacy? @relation(fields: [pharmacyId], references: [id])
   qrCodes            QRCode[]
   scanLogs            ScanLog[]
+  cartItems           CartItem[]
+  orderItems          OrderItem[]
 
   @@index([batchHash])
   @@index([manufacturerId])
@@ -330,4 +341,163 @@ model AuditTrail {
   @@index([performedBy])
   @@index([createdAt])
   @@map("audit_trails")
+}
+
+// ============================================
+// CONSUMER APP MODELS (user-be)
+// ============================================
+
+// Refresh tokens for JWT authentication
+model RefreshToken {
+  id          String   @id @default(cuid())
+  token       String   @unique
+  userId      String   @map("user_id")
+  deviceId    String?  @map("device_id")
+  deviceName  String?  @map("device_name")
+  expiresAt   DateTime @map("expires_at")
+  isRevoked   Boolean  @default(false) @map("is_revoked")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user        User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@map("refresh_tokens")
+}
+
+// User addresses for delivery
+model Address {
+  id              String   @id @default(cuid())
+  userId          String   @map("user_id")
+  label           String?  // "Home", "Work", etc.
+  fullName        String   @map("full_name")
+  phone           String
+  addressLine1    String   @map("address_line_1")
+  addressLine2    String?  @map("address_line_2")
+  city            String
+  state           String
+  pincode         String
+  country         String   @default("India")
+  landmark        String?
+  isDefault       Boolean  @default(false) @map("is_default")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user            User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders          Order[]
+
+  @@index([userId])
+  @@map("addresses")
+}
+
+// Shopping cart
+model Cart {
+  id              String   @id @default(cuid())
+  userId          String   @unique @map("user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user            User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items           CartItem[]
+
+  @@map("carts")
+}
+
+// Cart items
+model CartItem {
+  id              String   @id @default(cuid())
+  cartId          String   @map("cart_id")
+  batchId         String   @map("batch_id")
+  quantity        Int      @default(1)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  cart            Cart @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  batch           Batch @relation(fields: [batchId], references: [id])
+
+  @@unique([cartId, batchId])
+  @@index([cartId])
+  @@index([batchId])
+  @@map("cart_items")
+}
+
+// Orders
+model Order {
+  id              String      @id @default(cuid())
+  orderNumber     String      @unique @map("order_number")
+  userId          String      @map("user_id")
+  addressId       String      @map("address_id")
+  status          OrderStatus @default(PENDING)
+  paymentStatus   PaymentStatus @default(PENDING) @map("payment_status")
+  paymentMethod   String?     @map("payment_method")
+  paymentId       String?     @map("payment_id") // Razorpay/payment gateway ID
+  subtotal        Decimal     @db.Decimal(10, 2)
+  tax             Decimal     @default(0) @db.Decimal(10, 2)
+  deliveryFee     Decimal     @default(0) @db.Decimal(10, 2) @map("delivery_fee")
+  discount        Decimal     @default(0) @db.Decimal(10, 2)
+  total           Decimal     @db.Decimal(10, 2)
+  notes           String?     @db.Text
+  prescriptionUrl String?     @map("prescription_url") // If prescription required
+  estimatedDelivery DateTime? @map("estimated_delivery")
+  deliveredAt     DateTime?   @map("delivered_at")
+  cancelledAt     DateTime?   @map("cancelled_at")
+  cancellationReason String?  @map("cancellation_reason") @db.Text
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+
+  // Relations
+  user            User @relation(fields: [userId], references: [id])
+  address         Address @relation(fields: [addressId], references: [id])
+  items           OrderItem[]
+
+  @@index([userId])
+  @@index([orderNumber])
+  @@index([status])
+  @@index([paymentStatus])
+  @@index([createdAt])
+  @@map("orders")
+}
+
+// Order items
+model OrderItem {
+  id              String   @id @default(cuid())
+  orderId         String   @map("order_id")
+  batchId         String   @map("batch_id")
+  medicineName    String   @map("medicine_name") // Snapshot at time of order
+  medicineStrength String  @map("medicine_strength")
+  quantity        Int
+  unitPrice       Decimal  @db.Decimal(10, 2) @map("unit_price")
+  totalPrice      Decimal  @db.Decimal(10, 2) @map("total_price")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  // Relations
+  order           Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  batch           Batch @relation(fields: [batchId], references: [id])
+
+  @@index([orderId])
+  @@index([batchId])
+  @@map("order_items")
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+  RETURNED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
 }

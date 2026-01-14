@@ -5,6 +5,7 @@ import { Server } from 'http';
 dotenv.config();
 import prisma from './config/database';
 import { initializeWebSocketServer, closeWebSocketServer } from './websocket/server';
+import { initCentralWebSocket, getCentralWSClient } from './websocket/central-client';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -105,13 +106,22 @@ async function startServer() {
     await prisma.$connect();
     console.log('Database connected');
 
-    const httpServer = app.listen(PORT, () => {
+    const httpServer = app.listen(PORT, async () => {
       console.log(`TrackMed Backend API running on port ${PORT}`);
       console.log(`Health check: http://localhost:${PORT}/health`);
       console.log(`API endpoints: http://localhost:${PORT}/api`);
       console.log(`WebSocket endpoint: ws://localhost:${PORT}/ws`);
       console.log(`Solana RPC: ${process.env.SOLANA_RPC_URL || 'http://127.0.0.1:8899'} (localnet)`);
       console.log(`Program ID: 48BYj4BVCp7D3EByu6f9nW8uHaFuuFdwJozB7iLZPxhJ`);
+
+      // Initialize connection to central WebSocket server
+      try {
+        await initCentralWebSocket();
+        console.log('[Central WS] Connected to WebSocket server');
+      } catch (error) {
+        console.error('[Central WS] Failed to connect:', error);
+        // Server continues running, WS will auto-reconnect
+      }
     });
 
     initializeWebSocketServer(httpServer);
@@ -125,6 +135,8 @@ async function startServer() {
 process.on('SIGINT', async () => {
   console.log('\nShutting down gracefully...');
   closeWebSocketServer();
+  const centralWS = getCentralWSClient();
+  if (centralWS) centralWS.disconnect();
   await prisma.$disconnect();
   process.exit(0);
 });
@@ -132,6 +144,8 @@ process.on('SIGINT', async () => {
 process.on('SIGTERM', async () => {
   console.log('\nShutting down gracefully...');
   closeWebSocketServer();
+  const centralWS = getCentralWSClient();
+  if (centralWS) centralWS.disconnect();
   await prisma.$disconnect();
   process.exit(0);
 });
