@@ -2,13 +2,22 @@ import { v4 as uuidv4 } from 'uuid';
 import { ExtendedWebSocket, WSMessage, AuthMessage, SubscribeMessage } from './types';
 import { clientManager } from './client-manager';
 import { authenticateClient } from './auth';
+import { rateLimiter } from './rate-limiter';
 
 /**
  * Handle incoming messages
  */
 export const handleMessage = (ws: ExtendedWebSocket, data: string): void => {
   try {
+    // Check rate limit (skip for AUTH messages to allow initial auth)
     const message: WSMessage = JSON.parse(data);
+    
+    if (message.type !== 'AUTH' && message.type !== 'PING') {
+      if (!rateLimiter.isAllowed(ws.id)) {
+        sendRateLimitError(ws);
+        return;
+      }
+    }
     
     switch (message.type) {
       case 'AUTH':
@@ -75,8 +84,17 @@ const handleAuth = (ws: ExtendedWebSocket, message: AuthMessage): void => {
     ws.userRole = result.userRole;
     ws.serviceType = result.serviceType;
     
-    // Add to client manager
-    clientManager.addClient(ws);
+    // Add to client manager (checks connection limits)
+    const added = clientManager.addClient(ws);
+    
+    if (!added) {
+      sendMessage(ws, {
+        type: 'AUTH_ERROR',
+        payload: { error: 'Connection limit reached. Please try again later.' },
+      });
+      ws.close(1008, 'Connection limit reached');
+      return;
+    }
     
     // Auto-subscribe to user's channels
     if (ws.userId) {
@@ -343,4 +361,23 @@ const sendError = (ws: ExtendedWebSocket, error: string): void => {
     type: 'AUTH_ERROR',
     payload: { error },
   });
+};
+
+/**
+ * Send rate limit error to client
+ */
+const sendRateLimitError = (ws: ExtendedWebSocket): void => {
+  const remaining = rateLimiter.getRemaining(ws.id);
+  const resetTime = rateLimiter.getResetTime(ws.id);
+  
+  sendMessage(ws, {
+    type: 'RATE_LIMIT_ERROR' as any,
+    payload: {
+      error: 'Rate limit exceeded. Please slow down.',
+      remaining,
+      resetInMs: resetTime,
+    },
+  });
+  
+  console.log(`[RateLimit] Client ${ws.id} rate limited. Reset in ${resetTime}ms`);
 };

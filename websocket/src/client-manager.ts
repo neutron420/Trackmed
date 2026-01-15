@@ -1,4 +1,12 @@
 import { ExtendedWebSocket, ClientType, ServiceType } from './types';
+import { config } from './config';
+
+interface ConnectionLimitResult {
+  allowed: boolean;
+  reason?: string;
+  currentCount?: number;
+  maxAllowed?: number;
+}
 
 class ClientManager {
   // All connected clients
@@ -14,9 +22,48 @@ class ClientManager {
   private channels: Map<string, Set<string>> = new Map();
 
   /**
+   * Check if a new connection is allowed based on limits
+   */
+  canConnect(userId?: string): ConnectionLimitResult {
+    // Check total connection limit
+    if (this.clients.size >= config.connectionLimits.maxTotal) {
+      return {
+        allowed: false,
+        reason: 'Server at maximum capacity',
+        currentCount: this.clients.size,
+        maxAllowed: config.connectionLimits.maxTotal,
+      };
+    }
+
+    // Check per-user connection limit
+    if (userId) {
+      const userSockets = this.userClients.get(userId);
+      const currentCount = userSockets?.size || 0;
+      
+      if (currentCount >= config.connectionLimits.maxPerUser) {
+        return {
+          allowed: false,
+          reason: 'Maximum connections per user reached',
+          currentCount,
+          maxAllowed: config.connectionLimits.maxPerUser,
+        };
+      }
+    }
+
+    return { allowed: true };
+  }
+
+  /**
    * Add a new client
    */
-  addClient(ws: ExtendedWebSocket): void {
+  addClient(ws: ExtendedWebSocket): boolean {
+    // Check connection limits before adding
+    const limitCheck = this.canConnect(ws.userId);
+    if (!limitCheck.allowed) {
+      console.log(`[ClientManager] Connection denied for ${ws.id}: ${limitCheck.reason}`);
+      return false;
+    }
+
     this.clients.set(ws.id, ws);
     
     // Index by user ID
@@ -34,6 +81,7 @@ class ClientManager {
     
     console.log(`[ClientManager] Client added: ${ws.id} (${ws.clientType})`);
     this.logStats();
+    return true;
   }
 
   /**
