@@ -7,6 +7,8 @@ import { config } from './config';
 import { ExtendedWebSocket } from './types';
 import { clientManager } from './client-manager';
 import { handleMessage } from './handlers';
+import { rateLimiter } from './rate-limiter';
+
 
 // Create Express app for health checks
 const app = express();
@@ -28,7 +30,16 @@ app.get('/health', (req, res) => {
 app.get('/stats', (req, res) => {
   res.json({
     success: true,
-    data: clientManager.getStats(),
+    data: {
+      ...clientManager.getStats(),
+      rateLimit: rateLimiter.getStats(),
+      limits: {
+        maxConnectionsPerUser: config.connectionLimits.maxPerUser,
+        maxTotalConnections: config.connectionLimits.maxTotal,
+        rateLimitWindowMs: config.rateLimit.windowMs,
+        rateLimitMaxMessages: config.rateLimit.maxMessages,
+      },
+    },
   });
 });
 
@@ -105,13 +116,14 @@ const heartbeatInterval = setInterval(() => {
     if (extWs.isAlive === false) {
       console.log(`[Heartbeat] Terminating inactive client: ${extWs.id}`);
       clientManager.removeClient(extWs.id);
+      rateLimiter.removeClient(extWs.id);
       return extWs.terminate();
     }
     
     extWs.isAlive = false;
     extWs.ping();
   });
-}, 30000);
+}, config.heartbeat.intervalMs);
 
 // Cleanup on server close
 wss.on('close', () => {
@@ -124,25 +136,89 @@ httpServer.listen(config.httpPort, () => {
 });
 
 // Graceful shutdown
-const gracefulShutdown = () => {
-  console.log('\n[WS] Shutting down...');
+let isShuttingDown = false;
+
+const gracefulShutdown = (signal: string) => {
+  if (isShuttingDown) {
+    console.log('[WS] Shutdown already in progress...');
+    return;
+  }
   
-  // Close all connections
-  wss.clients.forEach((ws) => {
-    ws.close(1001, 'Server shutting down');
-  });
+  isShuttingDown = true;
+  console.log(`\n[WS] Received ${signal}. Starting graceful shutdown...`);
   
-  clearInterval(heartbeatInterval);
-  
+  // Stop accepting new connections
   wss.close(() => {
+    console.log('[WS] WebSocket server closed');
+  });
+
+  // Notify all clients and close connections
+  const closePromises: Promise<void>[] = [];
+  
+  wss.clients.forEach((ws) => {
+    const extWs = ws as ExtendedWebSocket;
+    
+    // Send shutdown notification
+    try {
+      ws.send(JSON.stringify({
+        type: 'SERVER_SHUTDOWN',
+        payload: { message: 'Server is shutting down. Please reconnect shortly.' },
+        timestamp: new Date().toISOString(),
+      }));
+    } catch (e) {
+      // Ignore send errors during shutdown
+    }
+    
+    // Close with proper code
+    closePromises.push(new Promise((resolve) => {
+      ws.close(1001, 'Server shutting down');
+      ws.once('close', () => {
+        clientManager.removeClient(extWs.id);
+        rateLimiter.removeClient(extWs.id);
+        resolve();
+      });
+      
+      // Force close after timeout
+      setTimeout(() => {
+        if (ws.readyState !== WebSocket.CLOSED) {
+          ws.terminate();
+        }
+        resolve();
+      }, 5000);
+    }));
+  });
+
+  // Wait for all connections to close (with timeout)
+  Promise.all(closePromises).then(() => {
+    clearInterval(heartbeatInterval);
+    rateLimiter.stop();
+    
     httpServer.close(() => {
-      console.log('[WS] Server closed');
+      console.log('[HTTP] Health check server closed');
+      console.log('[WS] Graceful shutdown complete');
       process.exit(0);
     });
+    
+    // Force exit after timeout
+    setTimeout(() => {
+      console.log('[WS] Forcing shutdown after timeout');
+      process.exit(1);
+    }, 10000);
   });
 };
 
-process.on('SIGTERM', gracefulShutdown);
-process.on('SIGINT', gracefulShutdown);
+// Handle termination signals
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error('[FATAL] Uncaught exception:', error);
+  gracefulShutdown('uncaughtException');
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[FATAL] Unhandled rejection at:', promise, 'reason:', reason);
+});
 
 export { wss, httpServer };

@@ -24,6 +24,9 @@ export type MessageType =
   | 'UNSUBSCRIBE'
   | 'PING'
   | 'PONG'
+  | 'CONNECTED'
+  | 'SERVER_SHUTDOWN'
+  | 'RATE_LIMIT_ERROR'
   // Order events
   | 'ORDER_CREATED'
   | 'ORDER_STATUS_CHANGED'
