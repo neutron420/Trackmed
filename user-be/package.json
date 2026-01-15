@@ -9,7 +9,10 @@
     "start": "node dist/index.js",
     "prisma:generate": "cd ../admin-be && npx prisma generate",
     "prisma:migrate": "cd ../admin-be && npx prisma migrate dev",
-    "prisma:studio": "cd ../admin-be && npx prisma studio"
+    "prisma:studio": "cd ../admin-be && npx prisma studio",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
   },
   "dependencies": {
     "@prisma/client": "^6.0.0",
@@ -23,16 +26,23 @@
     "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.1",
     "prisma": "^6.0.0",
-    "uuid": "^11.0.5"
+    "uuid": "^11.0.5",
+    "winston": "^3.19.0",
+    "ws": "^8.19.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
+    "@types/jest": "^29.5.14",
     "@types/jsonwebtoken": "^9.0.7",
     "@types/multer": "^1.4.12",
     "@types/node": "^22.10.5",
     "@types/uuid": "^10.0.0",
+    "@types/ws": "^8.18.1",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.4.6",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.7.3"
   },

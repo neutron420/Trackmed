@@ -1,0 +1,133 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: trackmed-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-trackmed}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-trackmed123}
+      POSTGRES_DB: ${DB_NAME:-trackmed_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-trackmed}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - trackmed-network
+
+  # Redis (for caching and sessions - optional)
+  redis:
+    image: redis:7-alpine
+    container_name: trackmed-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - trackmed-network
+
+  # Admin Backend
+  admin-be:
+    build:
+      context: ./admin-be
+      dockerfile: Dockerfile
+      target: development
+    container_name: trackmed-admin-be
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - DATABASE_URL=postgresql://${DB_USER:-trackmed}:${DB_PASSWORD:-trackmed123}@postgres:5432/${DB_NAME:-trackmed_db}
+      - JWT_SECRET=${JWT_SECRET:-your-jwt-secret-change-in-production}
+      - SOLANA_RPC_URL=${SOLANA_RPC_URL:-http://host.docker.internal:8899}
+      - WS_SERVER_URL=ws://websocket:3003
+      - WS_SERVICE_KEY=${ADMIN_WS_KEY:-admin-be-service-secret-key-2026}
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./admin-be:/app
+      - /app/node_modules
+      - admin_logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - trackmed-network
+
+  # User Backend
+  user-be:
+    build:
+      context: ./user-be
+      dockerfile: Dockerfile
+      target: development
+    container_name: trackmed-user-be
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=development
+      - PORT=3001
+      - DATABASE_URL=postgresql://${DB_USER:-trackmed}:${DB_PASSWORD:-trackmed123}@postgres:5432/${DB_NAME:-trackmed_db}
+      - JWT_SECRET=${JWT_SECRET:-your-jwt-secret-change-in-production}
+      - ADMIN_BE_URL=http://admin-be:3000
+      - WS_SERVER_URL=ws://websocket:3003
+      - WS_SERVICE_KEY=${USER_WS_KEY:-user-be-service-secret-key-2026}
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./user-be:/app
+      - /app/node_modules
+      - user_logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - trackmed-network
+
+  # WebSocket Server
+  websocket:
+    build:
+      context: ./websocket
+      dockerfile: Dockerfile
+      target: development
+    container_name: trackmed-websocket
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=development
+      - WS_PORT=3003
+      - HTTP_PORT=3004
+      - JWT_SECRET_USER=${JWT_SECRET:-your-jwt-secret-change-in-production}
+      - JWT_SECRET_ADMIN=${JWT_SECRET:-your-jwt-secret-change-in-production}
+      - ADMIN_BE_SERVICE_KEY=${ADMIN_WS_KEY:-admin-be-service-secret-key-2026}
+      - USER_BE_SERVICE_KEY=${USER_WS_KEY:-user-be-service-secret-key-2026}
+    ports:
+      - "3003:3003"
+      - "3004:3004"
+    volumes:
+      - ./websocket:/app
+      - /app/node_modules
+      - ws_logs:/app/logs
+    networks:
+      - trackmed-network
+
+networks:
+  trackmed-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  admin_logs:
+  user_logs:
+  ws_logs:

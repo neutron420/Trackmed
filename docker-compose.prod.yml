@@ -1,0 +1,118 @@
+version: '3.8'
+
+# Production Docker Compose
+# Usage: docker-compose -f docker-compose.prod.yml up -d
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: trackmed-postgres-prod
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - trackmed-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: trackmed-redis-prod
+    restart: always
+    volumes:
+      - redis_data:/data
+    networks:
+      - trackmed-network
+
+  admin-be:
+    build:
+      context: ./admin-be
+      dockerfile: Dockerfile
+      target: production
+    container_name: trackmed-admin-be-prod
+    restart: always
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}
+      - JWT_SECRET=${JWT_SECRET}
+      - SOLANA_RPC_URL=${SOLANA_RPC_URL}
+      - WS_SERVER_URL=ws://websocket:3003
+      - WS_SERVICE_KEY=${ADMIN_WS_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - trackmed-network
+
+  user-be:
+    build:
+      context: ./user-be
+      dockerfile: Dockerfile
+      target: production
+    container_name: trackmed-user-be-prod
+    restart: always
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}
+      - JWT_SECRET=${JWT_SECRET}
+      - ADMIN_BE_URL=http://admin-be:3000
+      - WS_SERVER_URL=ws://websocket:3003
+      - WS_SERVICE_KEY=${USER_WS_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - trackmed-network
+
+  websocket:
+    build:
+      context: ./websocket
+      dockerfile: Dockerfile
+      target: production
+    container_name: trackmed-websocket-prod
+    restart: always
+    environment:
+      - NODE_ENV=production
+      - WS_PORT=3003
+      - HTTP_PORT=3004
+      - JWT_SECRET_USER=${JWT_SECRET}
+      - JWT_SECRET_ADMIN=${JWT_SECRET}
+      - ADMIN_BE_SERVICE_KEY=${ADMIN_WS_KEY}
+      - USER_BE_SERVICE_KEY=${USER_WS_KEY}
+    networks:
+      - trackmed-network
+
+  # Nginx reverse proxy
+  nginx:
+    image: nginx:alpine
+    container_name: trackmed-nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - admin-be
+      - user-be
+      - websocket
+    networks:
+      - trackmed-network
+
+networks:
+  trackmed-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
