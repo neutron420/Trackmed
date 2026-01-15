@@ -18,6 +18,7 @@ import profileRoutes from './routes/profile.routes';
 import scanRoutes from './routes/scan.routes';
 import cartRoutes from './routes/cart.routes';
 import orderRoutes from './routes/order.routes';
+import notificationRoutes from './routes/notification.routes';
 
 const app = express();
 
@@ -109,6 +110,11 @@ app.get('/api', (req, res) => {
         initiatePayment: 'POST /api/orders/:id/payment',
         verifyPayment: 'POST /api/orders/payment/verify',
       },
+      notifications: {
+        registerToken: 'POST /api/notifications/token',
+        unregisterToken: 'DELETE /api/notifications/token',
+        listTokens: 'GET /api/notifications/tokens',
+      },
     },
   });
 });
@@ -119,6 +125,7 @@ app.use('/api/profile', profileRoutes);
 app.use('/api/scan', scanRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/api/orders', orderRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // Error handling
 app.use(notFoundHandler);

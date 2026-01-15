@@ -37,6 +37,7 @@ model User {
   cart          Cart?
   orders        Order[]
   refreshTokens RefreshToken[]
+  pushTokens    PushToken[]
 
   @@map("users")
 }
@@ -500,4 +501,23 @@ enum PaymentStatus {
   FAILED
   REFUNDED
   PARTIALLY_REFUNDED
+}
+
+// Push notification tokens (OneSignal player IDs)
+model PushToken {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  playerId    String   @unique @map("player_id") // OneSignal player ID
+  deviceType  String?  @map("device_type") // android, ios
+  deviceModel String?  @map("device_model")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user        User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([playerId])
+  @@map("push_tokens")
 }

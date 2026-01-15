@@ -36,4 +36,10 @@ export const config = {
   
   // Admin Backend
   adminBeUrl: process.env.ADMIN_BE_URL || 'http://localhost:3000',
+
+  // OneSignal Push Notifications
+  oneSignal: {
+    appId: process.env.ONESIGNAL_APP_ID || '',
+    restApiKey: process.env.ONESIGNAL_REST_API_KEY || '',
+  },
 };
