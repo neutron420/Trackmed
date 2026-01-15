@@ -9,13 +9,10 @@ import { clientManager } from './client-manager';
 import { handleMessage } from './handlers';
 import { rateLimiter } from './rate-limiter';
 
-
-// Create Express app for health checks
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Health check endpoint
 app.get('/health', (req, res) => {
   res.json({
     success: true,
@@ -26,7 +23,7 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Stats endpoint
+
 app.get('/stats', (req, res) => {
   res.json({
     success: true,
@@ -43,10 +40,7 @@ app.get('/stats', (req, res) => {
   });
 });
 
-// Create HTTP server
 const httpServer = http.createServer(app);
-
-// Create WebSocket server
 const wss = new WebSocketServer({ 
   port: config.wsPort,
   perMessageDeflate: false,
