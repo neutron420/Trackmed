@@ -9,13 +9,12 @@ const dotenv_1 = __importDefault(require("dotenv"));
 dotenv_1.default.config();
 const database_1 = __importDefault(require("./config/database"));
 const server_1 = require("./websocket/server");
+const central_client_1 = require("./websocket/central-client");
 const app = (0, express_1.default)();
 const PORT = process.env.PORT || 3000;
-// Middleware
 app.use((0, cors_1.default)());
 app.use(express_1.default.json());
 app.use(express_1.default.urlencoded({ extended: true }));
-// Health check
 app.get('/health', (req, res) => {
     res.json({
         status: 'ok',
@@ -23,7 +22,32 @@ app.get('/health', (req, res) => {
         service: 'TrackMed Backend API',
     });
 });
-// API Routes
+// Root API endpoint
+app.get('/api', (req, res) => {
+    res.json({
+        success: true,
+        service: 'TrackMed Backend API',
+        version: '1.0.0',
+        timestamp: new Date().toISOString(),
+        endpoints: {
+            auth: '/api/auth',
+            batch: '/api/batch',
+            scan: '/api/scan',
+            fraud: '/api/fraud',
+            manufacturer: '/api/manufacturer',
+            medicine: '/api/medicine',
+            qrCode: '/api/qr-code',
+            lifecycle: '/api/lifecycle',
+            distributor: '/api/distributor',
+            pharmacy: '/api/pharmacy',
+            analytics: '/api/analytics',
+            user: '/api/user',
+            batchSearch: '/api/batch-search',
+            inventory: '/api/inventory',
+            auditTrail: '/api/audit-trail',
+        },
+    });
+});
 const auth_routes_1 = __importDefault(require("./routes/auth.routes"));
 const batch_routes_1 = __importDefault(require("./routes/batch.routes"));
 const scan_routes_1 = __importDefault(require("./routes/scan.routes"));
@@ -75,13 +99,22 @@ async function startServer() {
         // Test database connection
         await database_1.default.$connect();
         console.log('Database connected');
-        const httpServer = app.listen(PORT, () => {
+        const httpServer = app.listen(PORT, async () => {
             console.log(`TrackMed Backend API running on port ${PORT}`);
             console.log(`Health check: http://localhost:${PORT}/health`);
             console.log(`API endpoints: http://localhost:${PORT}/api`);
             console.log(`WebSocket endpoint: ws://localhost:${PORT}/ws`);
             console.log(`Solana RPC: ${process.env.SOLANA_RPC_URL || 'http://127.0.0.1:8899'} (localnet)`);
             console.log(`Program ID: 48BYj4BVCp7D3EByu6f9nW8uHaFuuFdwJozB7iLZPxhJ`);
+            // Initialize connection to central WebSocket server
+            try {
+                await (0, central_client_1.initCentralWebSocket)();
+                console.log('[Central WS] Connected to WebSocket server');
+            }
+            catch (error) {
+                console.error('[Central WS] Failed to connect:', error);
+                // Server continues running, WS will auto-reconnect
+            }
         });
         (0, server_1.initializeWebSocketServer)(httpServer);
     }
@@ -94,12 +127,18 @@ async function startServer() {
 process.on('SIGINT', async () => {
     console.log('\nShutting down gracefully...');
     (0, server_1.closeWebSocketServer)();
+    const centralWS = (0, central_client_1.getCentralWSClient)();
+    if (centralWS)
+        centralWS.disconnect();
     await database_1.default.$disconnect();
     process.exit(0);
 });
 process.on('SIGTERM', async () => {
     console.log('\nShutting down gracefully...');
     (0, server_1.closeWebSocketServer)();
+    const centralWS = (0, central_client_1.getCentralWSClient)();
+    if (centralWS)
+        centralWS.disconnect();
     await database_1.default.$disconnect();
     process.exit(0);
 });

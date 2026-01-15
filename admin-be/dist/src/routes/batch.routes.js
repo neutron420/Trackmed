@@ -13,11 +13,6 @@ const web3_js_1 = require("@solana/web3.js");
 const bs58_1 = __importDefault(require("bs58"));
 const router = (0, express_1.Router)();
 const asString = (value) => Array.isArray(value) ? value[0] : value;
-/**
- * POST /api/batch/register
- * Register a new batch on both blockchain and database
- * Requires manufacturer wallet private key in request
- */
 router.post('/register', async (req, res) => {
     try {
         const { batchHash, batchNumber, manufacturingDate, expiryDate, manufacturerId, medicineId, quantity, invoiceNumber, invoiceDate, gstNumber, warehouseLocation, warehouseAddress, manufacturerWalletPrivateKey, // Base58 encoded private key

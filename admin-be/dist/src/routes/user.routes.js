@@ -8,10 +8,6 @@ const bcrypt_1 = __importDefault(require("bcrypt"));
 const database_1 = __importDefault(require("../config/database"));
 const audit_trail_service_1 = require("../services/audit-trail.service");
 const router = (0, express_1.Router)();
-/**
- * GET /api/user
- * Get all users with pagination
- */
 router.get('/', async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;
@@ -65,10 +61,6 @@ router.get('/', async (req, res) => {
         });
     }
 });
-/**
- * GET /api/user/:id
- * Get user by ID
- */
 router.get('/:id', async (req, res) => {
     try {
         const { id } = req.params;
@@ -103,10 +95,6 @@ router.get('/:id', async (req, res) => {
         });
     }
 });
-/**
- * POST /api/user
- * Create a new user
- */
 router.post('/', async (req, res) => {
     try {
         const { email, password, name, role } = req.body;

@@ -42,10 +42,6 @@ const solana_1 = require("../config/solana");
 const anchor = __importStar(require("@coral-xyz/anchor"));
 const anchor_1 = require("@coral-xyz/anchor");
 const solana_test_project_1 = require("../idl/solana_test_project");
-/**
- * Verify batch exists on blockchain and fetch its data
- * This is the ONLY source of truth for batch authenticity
- */
 async function verifyBatchOnBlockchain(batchHash, manufacturerWallet) {
     try {
         const manufacturerPubkey = new web3_js_1.PublicKey(manufacturerWallet);
@@ -55,14 +51,12 @@ async function verifyBatchOnBlockchain(batchHash, manufacturerWallet) {
         if (!accountInfo) {
             return { exists: false, error: 'Batch not found on blockchain' };
         }
-        // Decode account data using Anchor
         const provider = new anchor.AnchorProvider(solana_1.connection, {}, {
             commitment: 'confirmed',
         });
         const program = new anchor_1.Program(solana_test_project_1.IDL, solana_1.PROGRAM_ID, provider);
         const accounts = program.account;
         const batchAccount = await accounts.batch.fetch(batchPDA);
-        // Convert to our interface format
         const batchData = {
             batchHash: batchAccount.batchHash,
             manufacturerWallet: batchAccount.manufacturerWallet,
@@ -80,13 +74,10 @@ async function verifyBatchOnBlockchain(batchHash, manufacturerWallet) {
     catch (error) {
         return {
             exists: false,
-            error: error.message || 'Failed to verify batch on blockchain',
+            error: error.message || 'Failed to verify bathc on blockchain',
         };
     }
 }
-/**
- * Check if batch status is valid (not recalled)
- */
 function isBatchValid(status) {
     return 'valid' in status;
 }

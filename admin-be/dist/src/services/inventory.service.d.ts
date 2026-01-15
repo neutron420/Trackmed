@@ -6,6 +6,7 @@ export declare function checkLowStock(threshold?: number): Promise<({
         id: string;
         email: string | null;
         name: string;
+        phone: string | null;
         createdAt: Date;
         updatedAt: Date;
         gstNumber: string | null;
@@ -14,7 +15,6 @@ export declare function checkLowStock(threshold?: number): Promise<({
         city: string | null;
         state: string | null;
         country: string;
-        phone: string | null;
         walletAddress: string;
         isVerified: boolean;
     };
@@ -64,6 +64,7 @@ export declare function checkExpiringBatches(daysAhead?: number): Promise<({
         id: string;
         email: string | null;
         name: string;
+        phone: string | null;
         createdAt: Date;
         updatedAt: Date;
         gstNumber: string | null;
@@ -72,7 +73,6 @@ export declare function checkExpiringBatches(daysAhead?: number): Promise<({
         city: string | null;
         state: string | null;
         country: string;
-        phone: string | null;
         walletAddress: string;
         isVerified: boolean;
     };
