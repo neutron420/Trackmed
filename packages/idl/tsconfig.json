@@ -1,17 +1,17 @@
 {
   "compilerOptions": {
-    "target": "es2017",
+    "target": "ES2020",
     "module": "commonjs",
+    "declaration": true,
+    "declarationMap": true,
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true,
     "outDir": "./dist",
-    "baseUrl": ".",
-    "paths": {
-      "../target/types/*": ["target/types/*"]
-    }
+    "rootDir": "./src",
+    "resolveJsonModule": true
   },
-  "include": ["tests", "target/types"]
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
 }

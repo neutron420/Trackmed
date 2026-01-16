@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
 use crate::state::BatchStatus;
 use crate::events::BatchStatusUpdated;
+use crate::error::ErrorCode;
 
 pub fn handler(
     ctx: Context<crate::UpdateBatchStatus>,
@@ -10,15 +11,18 @@ pub fn handler(
     let clock = Clock::get()?;
     let batch = &mut ctx.accounts.batch;
     
-    // Only allow Valid or Recalled status
-    require!(
-        new_status == BatchStatus::Valid || new_status == BatchStatus::Recalled,
-        crate::error::ErrorCode::InvalidBatchStatus
-    );
-    
     let old_status = batch.status;
     
+    // Cannot modify a recalled batch
+    require!(old_status != BatchStatus::Recalled, ErrorCode::BatchAlreadyRecalled);
+    
+    // Valid status transitions:
+    // Valid -> Suspended, Valid -> Recalled
+    // Suspended -> Valid, Suspended -> Recalled
+    // Recalled is terminal (handled above)
+    
     batch.status = new_status;
+    batch.updated_at = clock.unix_timestamp;
     
     emit!(BatchStatusUpdated {
         batch_hash: batch.batch_hash.clone(),

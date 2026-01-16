@@ -82,12 +82,18 @@ pub mod solana_test_project {
         batch_hash: String,
         manufacturing_date: i64,
         expiry_date: i64,
+        quantity: u64,
+        mrp: u64,
+        metadata_hash: Option<String>,
     ) -> Result<()> {
         register_batch::handler(
             ctx,
             batch_hash,
             manufacturing_date,
             expiry_date,
+            quantity,
+            mrp,
+            metadata_hash,
         )
     }
 
