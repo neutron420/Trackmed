@@ -42,7 +42,7 @@ services:
   # Admin Backend
   admin-be:
     build:
-      context: ./admin-be
+      context: ./services/admin-be
       dockerfile: Dockerfile
       target: development
     container_name: trackmed-admin-be
@@ -58,7 +58,7 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - ./admin-be:/app
+      - ./services/admin-be:/app
       - /app/node_modules
       - admin_logs:/app/logs
     depends_on:
@@ -70,7 +70,7 @@ services:
   # User Backend
   user-be:
     build:
-      context: ./user-be
+      context: ./services/user-be
       dockerfile: Dockerfile
       target: development
     container_name: trackmed-user-be
@@ -86,7 +86,7 @@ services:
     ports:
       - "3001:3001"
     volumes:
-      - ./user-be:/app
+      - ./services/user-be:/app
       - /app/node_modules
       - user_logs:/app/logs
     depends_on:
@@ -98,7 +98,7 @@ services:
   # WebSocket Server
   websocket:
     build:
-      context: ./websocket
+      context: ./services/websocket
       dockerfile: Dockerfile
       target: development
     container_name: trackmed-websocket
@@ -115,7 +115,7 @@ services:
       - "3003:3003"
       - "3004:3004"
     volumes:
-      - ./websocket:/app
+      - ./services/websocket:/app
       - /app/node_modules
       - ws_logs:/app/logs
     networks:
