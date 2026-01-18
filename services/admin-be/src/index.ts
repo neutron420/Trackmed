@@ -46,6 +46,8 @@ app.get('/api', (req, res) => {
       batchSearch: '/api/batch-search',
       inventory: '/api/inventory',
       auditTrail: '/api/audit-trail',
+      shipment: '/api/shipment',
+      report: '/api/report',
     },
   });
 });
@@ -65,6 +67,9 @@ import userRoutes from './routes/user.routes';
 import batchSearchRoutes from './routes/batch-search.routes';
 import inventoryRoutes from './routes/inventory.routes';
 import auditTrailRoutes from './routes/audit-trail.routes';
+import shipmentRoutes from './routes/shipment.routes';
+import reportRoutes from './routes/report.routes';
+import chatRoutes from './routes/chat.routes';
 
 app.use('/api/auth', authRoutes);
 app.use('/api/batch', batchRoutes);
@@ -81,6 +86,9 @@ app.use('/api/user', userRoutes);
 app.use('/api/batch-search', batchSearchRoutes);
 app.use('/api/inventory', inventoryRoutes);
 app.use('/api/audit-trail', auditTrailRoutes);
+app.use('/api/shipment', shipmentRoutes);
+app.use('/api/report', reportRoutes);
+app.use('/api/chat', chatRoutes);
 
 // Error handling middleware
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {

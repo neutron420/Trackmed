@@ -1,6 +1,6 @@
 import prisma from '../config/database';
 
-export type EntityType = 'BATCH' | 'MANUFACTURER' | 'MEDICINE' | 'DISTRIBUTOR' | 'PHARMACY' | 'USER' | 'QR_CODE';
+export type EntityType = 'BATCH' | 'MANUFACTURER' | 'MEDICINE' | 'DISTRIBUTOR' | 'PHARMACY' | 'USER' | 'QR_CODE' | 'SHIPMENT' | 'REPORT';
 export type ActionType = 'CREATE' | 'UPDATE' | 'DELETE' | 'STATUS_CHANGE' | 'LIFECYCLE_CHANGE' | 'QUANTITY_CHANGE';
 
 export interface CreateAuditTrailParams {

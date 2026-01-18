@@ -140,6 +140,7 @@ model Batch {
   scanLogs            ScanLog[]
   cartItems           CartItem[]
   orderItems          OrderItem[]
+  shipments           Shipment[]
 
   @@index([batchHash])
   @@index([manufacturerId])
@@ -298,6 +299,7 @@ model Distributor {
 
   // Relations
   batches         Batch[]
+  shipments       Shipment[]
 
   @@map("distributors")
 }
@@ -342,6 +344,110 @@ model AuditTrail {
   @@index([performedBy])
   @@index([createdAt])
   @@map("audit_trails")
+}
+
+// Shipment tracking
+model Shipment {
+  id                String          @id @default(cuid())
+  shipmentNumber    String          @unique @map("shipment_number")
+  batchId           String          @map("batch_id")
+  distributorId     String          @map("distributor_id")
+  quantity          Int
+  status            ShipmentStatus  @default(PENDING)
+  pickupAddress     String?         @map("pickup_address") @db.Text
+  deliveryAddress   String?         @map("delivery_address") @db.Text
+  trackingNumber    String?         @map("tracking_number")
+  carrier           String?
+  estimatedDelivery DateTime?       @map("estimated_delivery")
+  shippedAt         DateTime?       @map("shipped_at")
+  deliveredAt       DateTime?       @map("delivered_at")
+  notes             String?         @db.Text
+  createdBy         String          @map("created_by")
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+
+  // Relations
+  batch             Batch           @relation(fields: [batchId], references: [id])
+  distributor       Distributor     @relation(fields: [distributorId], references: [id])
+  trackingHistory   ShipmentTracking[]
+
+  @@index([batchId])
+  @@index([distributorId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("shipments")
+}
+
+// Shipment tracking history
+model ShipmentTracking {
+  id              String    @id @default(cuid())
+  shipmentId      String    @map("shipment_id")
+  status          ShipmentStatus
+  location        String?
+  description     String?   @db.Text
+  timestamp       DateTime  @default(now())
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  shipment        Shipment  @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  @@index([shipmentId])
+  @@index([timestamp])
+  @@map("shipment_tracking")
+}
+
+enum ShipmentStatus {
+  PENDING
+  PICKED_UP
+  IN_TRANSIT
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+  RETURNED
+}
+
+// Report generation
+model Report {
+  id              String        @id @default(cuid())
+  reportNumber    String        @unique @map("report_number")
+  name            String
+  type            ReportType
+  status          ReportStatus  @default(PENDING)
+  parameters      Json?         // Report parameters/filters
+  fileUrl         String?       @map("file_url")
+  fileSize        Int?          @map("file_size")
+  format          String        @default("PDF") // PDF, CSV, EXCEL
+  generatedBy     String        @map("generated_by")
+  startedAt       DateTime?     @map("started_at")
+  completedAt     DateTime?     @map("completed_at")
+  errorMessage    String?       @map("error_message") @db.Text
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  @@index([type])
+  @@index([status])
+  @@index([generatedBy])
+  @@index([createdAt])
+  @@map("reports")
+}
+
+enum ReportType {
+  PRODUCTION
+  INVENTORY
+  SALES
+  QUALITY
+  VERIFICATION
+  EXPIRY
+  DISTRIBUTOR
+  BATCH_SUMMARY
+  FRAUD_ANALYSIS
+}
+
+enum ReportStatus {
+  PENDING
+  GENERATING
+  COMPLETED
+  FAILED
 }
 
 // ============================================

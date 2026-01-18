@@ -5,9 +5,28 @@ import {
   generateScanStatistics,
   generateBatchStatistics,
   getFraudStatistics,
+  getDashboardAnalytics,
 } from '../services/analytics.service';
 
 const router = Router();
+
+/**
+ * GET /api/analytics/dashboard
+ * Get comprehensive dashboard analytics
+ */
+router.get('/dashboard', async (req: Request, res: Response) => {
+  try {
+    const days = req.query.days ? parseInt(req.query.days as string) : 30;
+    const result = await getDashboardAnalytics(days);
+
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Internal server error',
+    });
+  }
+});
 
 /**
  * GET /api/analytics

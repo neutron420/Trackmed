@@ -162,4 +162,125 @@ router.post('/login', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * GET /api/auth/me
+ * Get current user profile
+ */
+router.get('/me', async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.userId;
+    
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: 'Not authenticated',
+      });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found',
+      });
+    }
+
+    res.json({
+      success: true,
+      data: user,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to get profile',
+    });
+  }
+});
+
+/**
+ * PATCH /api/auth/me
+ * Update current user profile
+ */
+router.patch('/me', async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.userId;
+    const { name, currentPassword, newPassword } = req.body;
+    
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: 'Not authenticated',
+      });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found',
+      });
+    }
+
+    const updateData: any = {};
+    
+    // Update name if provided
+    if (name !== undefined) {
+      updateData.name = name;
+    }
+
+    // Update password if both current and new passwords are provided
+    if (currentPassword && newPassword) {
+      const passwordMatch = await bcrypt.compare(currentPassword, user.passwordHash);
+      
+      if (!passwordMatch) {
+        return res.status(400).json({
+          success: false,
+          error: 'Current password is incorrect',
+        });
+      }
+      
+      updateData.passwordHash = await bcrypt.hash(newPassword, 10);
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: updateData,
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    res.json({
+      success: true,
+      data: updatedUser,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to update profile',
+    });
+  }
+});
+
 export default router;
