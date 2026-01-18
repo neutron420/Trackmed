@@ -1,19 +1,74 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import dotenv from 'dotenv';
 import { Server } from 'http';
 dotenv.config();
 import prisma from './config/database';
 import { initializeWebSocketServer, closeWebSocketServer } from './websocket/server';
 import { initCentralWebSocket, getCentralWSClient } from './websocket/central-client';
+import { generalLimiter, authLimiter, sanitizeInput, securityLogger } from './middleware/security.middleware';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Security: HTTP security headers
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "https:"],
+    },
+  },
+  crossOriginEmbedderPolicy: false,
+}));
 
-app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Security: CORS with specific origins
+const defaultOrigins = [
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'http://localhost:3002',
+  'http://localhost:3006',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:3001',
+  'http://127.0.0.1:3002',
+  'http://127.0.0.1:3006',
+];
+const allowedOrigins = (process.env.ALLOWED_ORIGINS?.split(',') || defaultOrigins).map(o => o.trim());
+const normalizeOrigin = (origin: string) => origin.replace(/\/$/, '');
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, curl, etc.)
+    if (!origin) return callback(null, true);
+    const normalizedOrigin = normalizeOrigin(origin);
+    const isAllowed = allowedOrigins
+      .map(normalizeOrigin)
+      .includes(normalizedOrigin);
+
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      callback(new Error(`Not allowed by CORS: ${origin}`));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
+
+// Security: Rate limiting
+app.use(generalLimiter);
+
+// Security: Request body size limit (prevent DoS)
+app.use(express.json({ limit: '10kb' }));
+app.use(express.urlencoded({ extended: true, limit: '10kb' }));
+
+// Security: Input sanitization and logging
+app.use(sanitizeInput);
+app.use(securityLogger);
 
 app.get('/health', (req, res) => {
   res.json({

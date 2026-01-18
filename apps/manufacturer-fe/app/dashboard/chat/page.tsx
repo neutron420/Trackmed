@@ -14,7 +14,8 @@ import {
 } from "react-icons/fi";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:3000";
+// Default WebSocket to the dedicated WS service port (3003) to avoid HTTP fallbacks.
+const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:3003";
 
 interface User {
   id: string;

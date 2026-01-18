@@ -14,6 +14,10 @@ import {
   FiMapPin,
   FiPackage,
 } from "react-icons/fi";
+import dynamic from "next/dynamic";
+
+// Mapbox component is client-only; load dynamically to avoid SSR issues.
+const HeatMap = dynamic(() => import("../../../components/map/heat-map").then(m => m.HeatMap), { ssr: false });
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
@@ -86,7 +90,6 @@ export default function AnalyticsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [dateRange, setDateRange] = useState("30d");
-  const [selectedLocation, setSelectedLocation] = useState<GeoLocation | null>(null);
 
   const fetchAnalytics = useCallback(async () => {
     const token = localStorage.getItem("token");
@@ -132,34 +135,6 @@ export default function AnalyticsPage() {
     router.push("/login");
   };
 
-  // Map India bounds and conversion helpers - adjusted for SVG viewBox 400x450
-  const mapBounds = {
-    minLat: 6.5,   // Southern tip (Kanyakumari ~8°)
-    maxLat: 37.5,  // Northern border (Kashmir ~37°)
-    minLng: 67.0,  // Western border (Gujarat ~68°)
-    maxLng: 98.0,  // Eastern border (Arunachal ~97°)
-  };
-
-  const latLngToXY = (lat: number, lng: number) => {
-    // Map to SVG viewBox: 400 width, 450 height with padding
-    const padding = 50;
-    const svgWidth = 400 - padding * 2;
-    const svgHeight = 450 - padding * 2;
-    
-    const x = padding + ((lng - mapBounds.minLng) / (mapBounds.maxLng - mapBounds.minLng)) * svgWidth;
-    const y = padding + (1 - (lat - mapBounds.minLat) / (mapBounds.maxLat - mapBounds.minLat)) * svgHeight;
-    return { x, y };
-  };
-
-  // Get heatmap color based on intensity
-  const getHeatColor = (orders: number, maxOrders: number) => {
-    const intensity = orders / maxOrders;
-    if (intensity > 0.7) return { fill: '#ef4444', opacity: 0.8 }; // Red - hot
-    if (intensity > 0.5) return { fill: '#f97316', opacity: 0.7 }; // Orange
-    if (intensity > 0.3) return { fill: '#eab308', opacity: 0.6 }; // Yellow
-    return { fill: '#22c55e', opacity: 0.5 }; // Green - cool
-  };
-
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -201,9 +176,6 @@ export default function AnalyticsPage() {
   const geoData = (analytics?.geographicData && analytics.geographicData.length > 0) 
     ? analytics.geographicData 
     : sampleGeoData;
-
-  // Calculate max orders for heatmap scaling
-  const maxOrders = Math.max(...geoData.map(d => d.orders), 1);
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -279,7 +251,7 @@ export default function AnalyticsPage() {
             />
           </div>
 
-          {/* Geographic Map - India Heatmap */}
+          {/* Geographic Map - Mapbox Heatmap */}
           <div className="mb-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="mb-3 flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -288,193 +260,7 @@ export default function AnalyticsPage() {
               </div>
               <span className="text-xs text-slate-500">{geoData.length} distributor locations</span>
             </div>
-            
-            <div className="flex gap-4">
-              {/* Map Container */}
-              <div className="relative flex-1 overflow-hidden rounded-lg bg-gradient-to-b from-sky-50 via-blue-50 to-emerald-50" style={{ height: 400 }}>
-                {/* India map with proper outline */}
-                <svg viewBox="0 0 400 450" className="absolute inset-0 h-full w-full">
-                  <defs>
-                    <linearGradient id="indiaGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#ecfdf5" stopOpacity="0.9" />
-                      <stop offset="50%" stopColor="#d1fae5" stopOpacity="0.8" />
-                      <stop offset="100%" stopColor="#a7f3d0" stopOpacity="0.7" />
-                    </linearGradient>
-                    <filter id="glow">
-                      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
-                      <feMerge>
-                        <feMergeNode in="coloredBlur"/>
-                        <feMergeNode in="SourceGraphic"/>
-                      </feMerge>
-                    </filter>
-                    <radialGradient id="heatGrad" cx="50%" cy="50%" r="50%">
-                      <stop offset="0%" stopColor="#ef4444" stopOpacity="0.8"/>
-                      <stop offset="50%" stopColor="#f97316" stopOpacity="0.5"/>
-                      <stop offset="100%" stopColor="#fbbf24" stopOpacity="0.2"/>
-                    </radialGradient>
-                  </defs>
-                  
-                  {/* More accurate India outline */}
-                  <path
-                    d="M180,25 L195,20 L220,25 L245,35 L270,30 L295,40 L310,55 L325,45 L340,60 
-                       L345,80 L355,95 L350,115 L360,135 L355,160 L365,180 L360,200 L370,225 
-                       L365,250 L355,275 L340,300 L320,325 L295,345 L270,365 L245,385 L220,400 
-                       L200,415 L180,420 L160,410 L140,395 L120,375 L100,350 L85,320 L75,290 
-                       L70,260 L65,230 L70,200 L80,170 L90,140 L105,115 L120,90 L140,65 L160,45 Z"
-                    fill="url(#indiaGrad)"
-                    stroke="#10b981"
-                    strokeWidth="2"
-                    className="drop-shadow-md"
-                  />
-                  
-                  {/* Kashmir region */}
-                  <path
-                    d="M180,25 L195,20 L220,25 L245,35 L230,55 L210,50 L190,45 Z"
-                    fill="#d1fae5"
-                    stroke="#10b981"
-                    strokeWidth="1"
-                  />
-                  
-                  {/* Grid overlay */}
-                  {[100, 175, 250, 325, 400].map((y) => (
-                    <line key={`h${y}`} x1="50" y1={y} x2="380" y2={y} stroke="#94a3b8" strokeWidth="0.3" strokeDasharray="5,5" opacity="0.5" />
-                  ))}
-                  {[100, 175, 250, 325].map((x) => (
-                    <line key={`v${x}`} x1={x} y1="20" x2={x} y2="420" stroke="#94a3b8" strokeWidth="0.3" strokeDasharray="5,5" opacity="0.5" />
-                  ))}
-                  
-                  {/* Heatmap circles (SVG) */}
-                  {geoData.map((loc) => {
-                    const { x, y } = latLngToXY(loc.lat, loc.lng);
-                    const heat = getHeatColor(loc.orders, maxOrders);
-                    const radius = Math.max(15, Math.min(45, (loc.orders / maxOrders) * 50));
-                    return (
-                      <g key={`heat-${loc.id}`}>
-                        {/* Heatmap glow */}
-                        <circle
-                          cx={x}
-                          cy={y}
-                          r={radius + 10}
-                          fill={heat.fill}
-                          opacity={heat.opacity * 0.3}
-                          filter="url(#glow)"
-                        />
-                        <circle
-                          cx={x}
-                          cy={y}
-                          r={radius}
-                          fill={heat.fill}
-                          opacity={heat.opacity * 0.6}
-                        />
-                      </g>
-                    );
-                  })}
-                </svg>
-
-                {/* Location markers (interactive) */}
-                {geoData.map((loc) => {
-                  const { x, y } = latLngToXY(loc.lat, loc.lng);
-                  const isSelected = selectedLocation?.id === loc.id;
-                  const heat = getHeatColor(loc.orders, maxOrders);
-                  return (
-                    <button
-                      key={loc.id}
-                      onClick={() => setSelectedLocation(isSelected ? null : loc)}
-                      className={`absolute transform -translate-x-1/2 -translate-y-1/2 transition-all duration-200 ${
-                        isSelected ? "z-20 scale-125" : "z-10 hover:scale-110"
-                      }`}
-                      style={{ left: `${(x / 400) * 100}%`, top: `${(y / 450) * 100}%` }}
-                      title={`${loc.city}: ${loc.orders} orders`}
-                    >
-                      <div
-                        className={`flex items-center justify-center rounded-full text-[9px] font-bold text-white shadow-lg border-2 border-white/50 ${
-                          isSelected ? "ring-2 ring-white ring-offset-1" : ""
-                        }`}
-                        style={{
-                          width: Math.max(22, Math.min(38, 20 + (loc.orders / maxOrders) * 20)),
-                          height: Math.max(22, Math.min(38, 20 + (loc.orders / maxOrders) * 20)),
-                          backgroundColor: heat.fill,
-                        }}
-                      >
-                        {loc.orders}
-                      </div>
-                      {isSelected && (
-                        <div className="absolute left-1/2 top-full mt-1 -translate-x-1/2 whitespace-nowrap rounded bg-slate-800 px-2 py-1 text-[10px] text-white shadow-lg">
-                          {loc.city}, {loc.state}
-                        </div>
-                      )}
-                    </button>
-                  );
-                })}
-
-                {/* Heatmap Legend */}
-                <div className="absolute bottom-2 left-2 rounded-lg bg-white/95 px-3 py-2 shadow-lg border border-slate-100">
-                  <p className="text-[10px] font-semibold text-slate-700 mb-1.5">Order Heatmap - India</p>
-                  <div className="flex items-center gap-1">
-                    <div className="flex items-center gap-0.5">
-                      <div className="h-3 w-3 rounded-full bg-green-500" />
-                      <span className="text-[8px] text-slate-500">Low</span>
-                    </div>
-                    <div className="h-2 w-12 rounded-full bg-gradient-to-r from-green-500 via-yellow-500 via-orange-500 to-red-500" />
-                    <div className="flex items-center gap-0.5">
-                      <div className="h-3 w-3 rounded-full bg-red-500" />
-                      <span className="text-[8px] text-slate-500">High</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Map Title */}
-                <div className="absolute top-2 right-2 rounded-lg bg-emerald-600 px-2 py-1 shadow">
-                  <p className="text-[10px] font-medium text-white">🇮🇳 India</p>
-                </div>
-              </div>
-
-              {/* Location Details Panel */}
-              <div className="w-64 rounded-lg border border-slate-100 bg-slate-50 p-3">
-                <h3 className="mb-2 text-xs font-semibold text-slate-700">
-                  {selectedLocation ? "Location Details" : "Top Locations"}
-                </h3>
-                {selectedLocation ? (
-                  <div className="space-y-2">
-                    <div className="rounded-lg bg-white p-3">
-                      <p className="font-medium text-slate-800">{selectedLocation.name}</p>
-                      <p className="text-xs text-slate-500">{selectedLocation.city}, {selectedLocation.state}</p>
-                      <div className="mt-2 flex items-center justify-between border-t border-slate-100 pt-2">
-                        <span className="text-xs text-slate-600">Orders</span>
-                        <span className="font-semibold text-emerald-600">{selectedLocation.orders}</span>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => setSelectedLocation(null)}
-                      className="w-full rounded bg-slate-200 py-1.5 text-xs text-slate-600 hover:bg-slate-300"
-                    >
-                      Clear Selection
-                    </button>
-                  </div>
-                ) : (
-                  <div className="space-y-1.5 max-h-64 overflow-y-auto">
-                    {geoData
-                      .sort((a, b) => b.orders - a.orders)
-                      .slice(0, 8)
-                      .map((loc, idx) => (
-                        <button
-                          key={loc.id}
-                          onClick={() => setSelectedLocation(loc)}
-                          className="flex w-full items-center justify-between rounded bg-white px-2 py-1.5 text-left hover:bg-emerald-50"
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-100 text-[10px] font-semibold text-emerald-700">
-                              {idx + 1}
-                            </span>
-                            <span className="text-xs text-slate-700">{loc.city}</span>
-                          </div>
-                          <span className="text-xs font-medium text-emerald-600">{loc.orders}</span>
-                        </button>
-                      ))}
-                  </div>
-                )}
-              </div>
-            </div>
+            <HeatMap points={geoData} height={420} />
           </div>
 
           {/* Charts Grid */}

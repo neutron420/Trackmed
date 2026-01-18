@@ -39,6 +39,10 @@ model User {
   refreshTokens RefreshToken[]
   pushTokens    PushToken[]
 
+  @@index([role])
+  @@index([isActive])
+  @@index([createdAt])
+  @@index([email])
   @@map("users")
 }
 
@@ -72,6 +76,10 @@ model Manufacturer {
   // Relations
   batches         Batch[]
 
+  @@index([name])
+  @@index([walletAddress])
+  @@index([isVerified])
+  @@index([createdAt])
   @@map("manufacturers")
 }
 
@@ -93,6 +101,9 @@ model Medicine {
   // Relations
   batches         Batch[]
 
+  @@index([name])
+  @@index([genericName])
+  @@index([createdAt])
   @@map("medicines")
 }
 
@@ -149,6 +160,10 @@ model Batch {
   @@index([distributorId])
   @@index([pharmacyId])
   @@index([lifecycleStatus])
+  @@index([status])
+  @@index([expiryDate])
+  @@index([createdAt])
+  @@index([batchNumber])
   @@map("batches")
 }
 
@@ -301,6 +316,9 @@ model Distributor {
   batches         Batch[]
   shipments       Shipment[]
 
+  @@index([name])
+  @@index([isVerified])
+  @@index([createdAt])
   @@map("distributors")
 }
 
@@ -323,6 +341,9 @@ model Pharmacy {
   // Relations
   batches         Batch[]
 
+  @@index([name])
+  @@index([isVerified])
+  @@index([createdAt])
   @@map("pharmacies")
 }
 
@@ -470,6 +491,8 @@ model RefreshToken {
 
   @@index([userId])
   @@index([token])
+  @@index([expiresAt])
+  @@index([isRevoked])
   @@map("refresh_tokens")
 }
 
@@ -496,6 +519,7 @@ model Address {
   orders          Order[]
 
   @@index([userId])
+  @@index([isDefault])
   @@map("addresses")
 }
 

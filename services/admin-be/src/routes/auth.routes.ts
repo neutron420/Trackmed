@@ -4,9 +4,16 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import prisma from '../config/database';
 import { UserRole } from '@prisma/client';
+import { authLimiter } from '../middleware/security.middleware';
+import { validate, schemas } from '../middleware/validation.middleware';
 
 const router = Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+
+// SECURITY: JWT_SECRET must be set in production
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error('FATAL: JWT_SECRET environment variable is not set!');
+}
 
 interface RegisterRequest {
   email: string;
@@ -20,7 +27,8 @@ interface LoginRequest {
   password: string;
 }
 
-router.post('/register', async (req: Request, res: Response) => {
+// Apply rate limiting to auth routes
+router.post('/register', authLimiter, validate(schemas.register), async (req: Request, res: Response) => {
   try {
     const { email, password, name, role }: RegisterRequest = req.body;
 
@@ -97,7 +105,7 @@ router.post('/register', async (req: Request, res: Response) => {
   }
 });
 
-router.post('/login', async (req: Request, res: Response) => {
+router.post('/login', authLimiter, validate(schemas.login), async (req: Request, res: Response) => {
   try {
     const { email, password }: LoginRequest = req.body;
 
