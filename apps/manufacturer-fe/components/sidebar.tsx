@@ -63,27 +63,27 @@ export function Sidebar({ user, onLogout, isCollapsed, onToggle }: SidebarProps)
       style={{ width: isCollapsed ? 72 : 260 }}
     >
       {/* Logo */}
-      <div className="flex h-16 items-center justify-between border-b border-slate-100 px-4">
-        <div className="flex items-center gap-3 overflow-hidden">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl shadow-md overflow-hidden">
+      <div className="flex h-16 items-center justify-between px-4">
+        <div className="flex items-center gap-2.5 overflow-hidden">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg overflow-hidden">
             <Image
               src="/trackmed-logo.png"
               alt="TrackMed"
-              width={40}
-              height={40}
-              className="h-10 w-10 object-cover"
+              width={36}
+              height={36}
+              className="h-9 w-9 object-contain"
             />
           </div>
           {!isCollapsed && (
             <div className="leading-tight">
-              <p className="text-sm font-bold text-slate-900">TrackMed</p>
-              <p className="text-xs text-slate-500">Manufacturer</p>
+              <p className="text-sm font-bold text-slate-800">TrackMed</p>
+              <p className="text-[11px] text-slate-400">Manufacturer</p>
             </div>
           )}
         </div>
         <button
           onClick={onToggle}
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+          className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
           aria-label="Toggle sidebar"
         >
           <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -92,8 +92,11 @@ export function Sidebar({ user, onLogout, isCollapsed, onToggle }: SidebarProps)
         </button>
       </div>
 
+      {/* Divider */}
+      <div className="mx-4 border-b border-slate-100" />
+
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto px-3 py-4">
+      <nav className="flex-1 overflow-y-auto px-3 py-4 scrollbar-thin">
         {navSections.map((section, sectionIndex) => (
           <div key={sectionIndex} className="mb-6">
             {!isCollapsed && (

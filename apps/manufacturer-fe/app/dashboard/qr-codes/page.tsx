@@ -5,6 +5,17 @@ import { useEffect, useState } from "react";
 import { Sidebar } from "../../../components/sidebar";
 import { DataTable, StatusBadge } from "../../../components/data-table";
 
+// Base URL for QR code verification - when scanned, redirects to this URL
+const VERIFY_BASE_URL = typeof window !== 'undefined' 
+  ? `${window.location.origin}/verify` 
+  : 'http://localhost:3001/verify';
+
+// Helper to generate QR code image URL with verification link
+const getQRImageUrl = (code: string, size: number = 200) => {
+  const verifyUrl = `${VERIFY_BASE_URL}/${encodeURIComponent(code)}`;
+  return `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(verifyUrl)}`;
+};
+
 interface User {
   id: string;
   email: string;
@@ -31,6 +42,9 @@ export default function QRCodesPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedCodes, setGeneratedCodes] = useState<any[]>([]);
   const [selectedQR, setSelectedQR] = useState<any | null>(null);
+  const [viewingBatchId, setViewingBatchId] = useState<string | null>(null);
+  const [viewingBatchName, setViewingBatchName] = useState<string>("");
+  const [isLoadingQRs, setIsLoadingQRs] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -113,9 +127,38 @@ export default function QRCodesPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `qr-codes-${selectedBatch}.txt`;
+    a.download = `qr-codes-${selectedBatch || viewingBatchId}.txt`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const viewBatchQRCodes = async (batchId: string, batchName: string) => {
+    setIsLoadingQRs(true);
+    setViewingBatchId(batchId);
+    setViewingBatchName(batchName);
+    setGeneratedCodes([]);
+    
+    try {
+      const token = localStorage.getItem("token");
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+      const res = await fetch(`${apiUrl}/api/qr-code/batch/${batchId}?limit=100`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.success) {
+        setGeneratedCodes(data.data || []);
+      }
+    } catch (error) {
+      console.error("Failed to fetch QR codes:", error);
+    } finally {
+      setIsLoadingQRs(false);
+    }
+  };
+
+  const closeViewMode = () => {
+    setViewingBatchId(null);
+    setViewingBatchName("");
+    setGeneratedCodes([]);
   };
 
   if (isLoading) {
@@ -210,22 +253,50 @@ export default function QRCodesPage() {
             </div>
           </div>
 
-          {/* Generated QR Codes */}
-          {generatedCodes.length > 0 && (
+          {/* Loading QR Codes */}
+          {isLoadingQRs && (
+            <div className="mb-6 rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
+              <div className="flex flex-col items-center justify-center">
+                <div className="h-8 w-8 animate-spin rounded-full border-4 border-emerald-200 border-t-emerald-600" />
+                <p className="mt-3 text-sm text-slate-500">Loading QR codes...</p>
+              </div>
+            </div>
+          )}
+
+          {/* Generated/Viewing QR Codes */}
+          {!isLoadingQRs && generatedCodes.length > 0 && (
             <div className="mb-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className="mb-4 flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-slate-900">
-                  Generated QR Codes ({generatedCodes.length})
-                </h2>
-                <button
-                  onClick={downloadQRCodes}
-                  className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                >
-                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                  </svg>
-                  Download
-                </button>
+                <div>
+                  <h2 className="text-sm font-semibold text-slate-900">
+                    {viewingBatchId ? "Batch QR Codes" : "Generated QR Codes"} ({generatedCodes.length})
+                  </h2>
+                  {viewingBatchId && (
+                    <p className="text-xs text-slate-500">{viewingBatchName}</p>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  {viewingBatchId && (
+                    <button
+                      onClick={closeViewMode}
+                      className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                    >
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                      Close
+                    </button>
+                  )}
+                  <button
+                    onClick={downloadQRCodes}
+                    className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    Download
+                  </button>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
@@ -235,9 +306,9 @@ export default function QRCodesPage() {
                     onClick={() => setSelectedQR(qr)}
                     className="group relative cursor-pointer overflow-hidden rounded-lg border border-slate-200 bg-white p-2 transition-all hover:border-emerald-300 hover:shadow-md"
                   >
-                    {/* Real QR Code using QR Server API */}
+                    {/* Real QR Code - links to verification page */}
                     <img
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qr.code || qr.id)}`}
+                      src={getQRImageUrl(qr.code || qr.id, 200)}
                       alt={`QR Code ${index + 1}`}
                       className="h-full w-full object-contain"
                       loading="lazy"
@@ -290,7 +361,7 @@ export default function QRCodesPage() {
                   key: "qrCodes",
                   label: "QR Codes",
                   render: (item) => (
-                    <span className="font-medium text-blue-600">
+                    <span className={`font-medium ${(item._count?.qrCodes || 0) > 0 ? "text-blue-600" : "text-slate-400"}`}>
                       {item._count?.qrCodes || 0}
                     </span>
                   ),
@@ -299,15 +370,26 @@ export default function QRCodesPage() {
                   key: "actions",
                   label: "",
                   render: (item) => (
-                    <button
-                      onClick={() => {
-                        setSelectedBatch(item.id);
-                        window.scrollTo({ top: 0, behavior: "smooth" });
-                      }}
-                      className="text-xs font-medium text-emerald-600 hover:text-emerald-700"
-                    >
-                      Generate →
-                    </button>
+                    <div className="flex items-center gap-2">
+                      {(item._count?.qrCodes || 0) > 0 && (
+                        <button
+                          onClick={() => viewBatchQRCodes(item.id, `${item.batchNumber} - ${item.medicine?.name}`)}
+                          className="rounded bg-blue-50 px-2 py-1 text-xs font-medium text-blue-600 hover:bg-blue-100"
+                        >
+                          View
+                        </button>
+                      )}
+                      <button
+                        onClick={() => {
+                          setSelectedBatch(item.id);
+                          setViewingBatchId(null);
+                          window.scrollTo({ top: 0, behavior: "smooth" });
+                        }}
+                        className="text-xs font-medium text-emerald-600 hover:text-emerald-700"
+                      >
+                        Generate →
+                      </button>
+                    </div>
                   ),
                 },
               ]}
@@ -345,15 +427,21 @@ export default function QRCodesPage() {
                 <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-slate-50">
                   <div className="h-10 w-10 animate-spin rounded-full border-4 border-emerald-200 border-t-emerald-600" />
                 </div>
-                {/* QR Image - fades in when loaded */}
+                {/* QR Image - links to verification page */}
                 <img
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(selectedQR.code || selectedQR.id)}`}
+                  src={getQRImageUrl(selectedQR.code || selectedQR.id, 300)}
                   alt="QR Code"
                   className="relative z-10 h-64 w-64 rounded bg-white"
                   onLoad={(e) => { (e.target as HTMLImageElement).style.opacity = '1'; }}
                   style={{ opacity: 0, transition: 'opacity 0.25s ease-in' }}
                 />
               </div>
+            </div>
+
+            {/* Verification URL */}
+            <div className="mb-3 rounded-lg bg-emerald-50 p-3">
+              <p className="text-xs font-medium text-emerald-700">Scan URL</p>
+              <p className="break-all text-xs text-emerald-600">{`${VERIFY_BASE_URL}/${selectedQR.code || selectedQR.id}`}</p>
             </div>
 
             {/* QR Code Info */}
@@ -382,18 +470,19 @@ export default function QRCodesPage() {
             <div className="flex gap-2">
               <button
                 onClick={() => {
-                  navigator.clipboard.writeText(selectedQR.code || selectedQR.id);
-                  alert("Code copied to clipboard!");
+                  const verifyUrl = `${VERIFY_BASE_URL}/${selectedQR.code || selectedQR.id}`;
+                  navigator.clipboard.writeText(verifyUrl);
+                  alert("Verification URL copied to clipboard!");
                 }}
                 className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
               >
                 <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                 </svg>
-                Copy Code
+                Copy URL
               </button>
               <a
-                href={`https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(selectedQR.code || selectedQR.id)}`}
+                href={getQRImageUrl(selectedQR.code || selectedQR.id, 400)}
                 download={`qr-${(selectedQR.code || selectedQR.id).slice(0, 12)}.png`}
                 target="_blank"
                 rel="noopener noreferrer"

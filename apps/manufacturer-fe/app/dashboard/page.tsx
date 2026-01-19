@@ -82,37 +82,36 @@ export default function DashboardPage() {
   const [recentBatches, setRecentBatches] = useState<BatchItem[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [qrCount, setQrCount] = useState(0);
+  const [scanCount, setScanCount] = useState(0);
 
   const fetchDashboardData = useCallback(async () => {
     const token = localStorage.getItem("token");
     if (!token) return;
 
+    const headers = { Authorization: `Bearer ${token}` };
+
     try {
-      // Fetch analytics dashboard data
-      const analyticsRes = await fetch(`${API_BASE}/api/analytics/dashboard?days=30`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const analyticsData = await analyticsRes.json();
-      if (analyticsData.success) {
-        setDashboardData(analyticsData.data);
+      // Fetch ALL data in PARALLEL for faster loading
+      const results = await Promise.allSettled([
+        fetch(`${API_BASE}/api/analytics/dashboard?days=30`, { headers }).then(r => r.json()),
+        fetch(`${API_BASE}/api/batch?limit=5`, { headers }).then(r => r.json()),
+        fetch(`${API_BASE}/api/audit-trail?limit=5`, { headers }).then(r => r.json()),
+        fetch(`${API_BASE}/api/qr-code?limit=1`, { headers }).then(r => r.json()),
+      ]);
+
+      // Process analytics data
+      if (results[0].status === 'fulfilled' && results[0].value.success) {
+        setDashboardData(results[0].value.data);
       }
 
-      // Fetch recent batches
-      const batchesRes = await fetch(`${API_BASE}/api/batch?limit=5`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const batchesData = await batchesRes.json();
-      if (batchesData.success) {
-        setRecentBatches(batchesData.data || []);
+      // Process batches data
+      if (results[1].status === 'fulfilled' && results[1].value.success) {
+        setRecentBatches(results[1].value.data || []);
       }
 
-      // Fetch recent audit trail for activities
-      const auditRes = await fetch(`${API_BASE}/api/audit-trail?limit=5`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const auditData = await auditRes.json();
-      if (auditData.success && auditData.data) {
-        const mappedActivities = auditData.data.map((audit: any) => ({
+      // Process audit trail data
+      if (results[2].status === 'fulfilled' && results[2].value.success && results[2].value.data) {
+        const mappedActivities = results[2].value.data.map((audit: any) => ({
           id: audit.id,
           type: mapAuditToActivityType(audit.entityType, audit.action),
           title: `${audit.action.replace(/_/g, " ")} ${audit.entityType}`,
@@ -122,13 +121,11 @@ export default function DashboardPage() {
         setActivities(mappedActivities);
       }
 
-      // Fetch QR code count
-      const qrRes = await fetch(`${API_BASE}/api/qr-code?limit=1`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const qrData = await qrRes.json();
-      if (qrData.success) {
-        setQrCount(qrData.pagination?.total || 0);
+      // Process QR code data
+      if (results[3].status === 'fulfilled' && results[3].value.success) {
+        const qrData = results[3].value;
+        setQrCount(qrData.stats?.totalQRCodes || qrData.pagination?.total || 0);
+        setScanCount(qrData.stats?.totalScans || 0);
       }
     } catch (error) {
       console.error("Failed to fetch dashboard data:", error);
@@ -250,7 +247,7 @@ export default function DashboardPage() {
             <StatCard
               title="QR Generated"
               value={qrCount.toLocaleString()}
-              change={`${summary?.totalScans || 0} scans`}
+              change={`↑ ${scanCount.toLocaleString()} scans`}
               changeType="positive"
               icon={<svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" /></svg>}
             />
