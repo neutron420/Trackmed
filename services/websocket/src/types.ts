@@ -43,7 +43,10 @@ export type MessageType =
   | 'INVENTORY_UPDATED'
   // Notification
   | 'NOTIFICATION'
-  | 'BROADCAST';
+  | 'BROADCAST'
+  // Chat
+  | 'CHAT'
+  | 'CHAT_RECEIVED';
 
 // Base message structure
 export interface WSMessage {

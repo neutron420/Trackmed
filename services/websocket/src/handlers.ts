@@ -60,8 +60,7 @@ export const handleMessage = (ws: ExtendedWebSocket, data: string): void => {
       case 'BROADCAST':
         handleBroadcast(ws, message);
         break;
-        
-      default:
+
         console.log(`[Handlers] Unknown message type: ${message.type}`);
     }
   } catch (error) {
@@ -380,4 +379,81 @@ const sendRateLimitError = (ws: ExtendedWebSocket): void => {
   });
   
   console.log(`[RateLimit] Client ${ws.id} rate limited. Reset in ${resetTime}ms`);
+};
+
+/**
+ * Handle chat messages between ADMIN and MANUFACTURER users
+ */
+const handleChat = (ws: ExtendedWebSocket, message: WSMessage): void => {
+  // Only allow ADMIN and MANUFACTURER users to chat
+  if (ws.userRole !== 'ADMIN' && ws.userRole !== 'MANUFACTURER') {
+    sendError(ws, 'Only ADMIN and MANUFACTURER users can use chat');
+    return;
+  }
+
+  const { message: chatMessage, recipientId, timestamp } = message.payload;
+
+  if (!chatMessage || typeof chatMessage !== 'string' || chatMessage.trim().length === 0) {
+    sendError(ws, 'Message is required');
+    return;
+  }
+
+  if (chatMessage.length > 1000) {
+    sendError(ws, 'Message too long (max 1000 characters)');
+    return;
+  }
+
+  const chatData = {
+    type: 'CHAT_RECEIVED',
+    payload: {
+      message: chatMessage,
+      senderId: ws.userId,
+      senderName: ws.userId, // Will be replaced with actual name from DB if available
+      senderRole: ws.userRole,
+      recipientId,
+      timestamp: timestamp || new Date().toISOString(),
+    },
+    timestamp: new Date().toISOString(),
+    messageId: uuidv4(),
+  };
+
+  const dataStr = JSON.stringify(chatData);
+
+  if (recipientId) {
+    // Direct message to specific user
+    const recipientClients = clientManager.getUserClients(recipientId);
+    const eligibleRecipients = recipientClients.filter(
+      c => c.userRole === 'ADMIN' || c.userRole === 'MANUFACTURER'
+    );
+
+    if (eligibleRecipients.length === 0) {
+      sendError(ws, 'Recipient not connected or not authorized');
+      return;
+    }
+
+    // Send to recipient
+    eligibleRecipients.forEach(client => {
+      if (client.readyState === client.OPEN) {
+        client.send(dataStr);
+      }
+    });
+
+    // Send back to sender for confirmation (if not same as recipient)
+    if (ws.userId !== recipientId && ws.readyState === ws.OPEN) {
+      ws.send(dataStr);
+    }
+
+    console.log(`[Chat] DM from ${ws.userId} (${ws.userRole}) to ${recipientId}`);
+  } else {
+    // Broadcast to all ADMIN and MANUFACTURER users
+    const allClients = [...clientManager.getClientsByRole('ADMIN'), ...clientManager.getClientsByRole('MANUFACTURER')];
+    
+    allClients.forEach(client => {
+      if (client.readyState === client.OPEN) {
+        client.send(dataStr);
+      }
+    });
+
+    console.log(`[Chat] Broadcast from ${ws.userId} (${ws.userRole}) to all ADMIN/MANUFACTURER`);
+  }
 };

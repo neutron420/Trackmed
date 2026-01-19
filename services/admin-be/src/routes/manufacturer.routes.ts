@@ -41,9 +41,27 @@ router.get('/', async (req: Request, res: Response) => {
       prisma.manufacturer.count({ where }),
     ]);
 
+    // Add unique medicines count through batches
+    const manufacturersWithMedicineCount = await Promise.all(
+      manufacturers.map(async (m) => {
+        const uniqueMedicines = await prisma.batch.findMany({
+          where: { manufacturerId: m.id },
+          select: { medicineId: true },
+          distinct: ['medicineId'],
+        });
+        return {
+          ...m,
+          _count: {
+            ...m._count,
+            medicines: uniqueMedicines.length,
+          },
+        };
+      })
+    );
+
     res.json({
       success: true,
-      data: manufacturers,
+      data: manufacturersWithMedicineCount,
       pagination: {
         page,
         limit,
@@ -305,6 +323,71 @@ router.patch('/:id/verify', async (req: Request, res: Response) => {
         }
       } catch (notifyErr) {
         console.error('Failed to send manufacturer verification notification:', notifyErr);
+      }
+    }
+
+    res.json({
+      success: true,
+      data: manufacturer,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Internal server error',
+    });
+  }
+});
+
+/**
+ * PATCH /api/manufacturer/:id/status
+ * Activate/deactivate manufacturer (admin only)
+ */
+router.patch('/:id/status', async (req: Request, res: Response) => {
+  try {
+    let id = req.params.id;
+    if (Array.isArray(id)) {
+      id = id[0];
+    }
+    const { isActive } = req.body;
+
+    const manufacturer = await prisma.manufacturer.update({
+      where: { id },
+      data: { isActive: isActive === true } as any,
+    });
+
+    // Create audit trail
+    const userId = (req as any).user?.userId || 'system';
+    const userRole = (req as any).user?.role || 'ADMIN';
+    const adminName = (req as any).user?.name || 'System';
+    
+    await createAuditTrail({
+      entityType: 'MANUFACTURER',
+      entityId: id as string,
+      action: 'UPDATE',
+      fieldName: 'isActive',
+      oldValue: String(!isActive),
+      newValue: String(isActive),
+      performedBy: userId,
+      performedByRole: userRole,
+    });
+
+    // Send notification to manufacturer user if email exists
+    if (manufacturer.email) {
+      try {
+        const manufacturerUser = await prisma.user.findUnique({
+          where: { email: manufacturer.email },
+        });
+        
+        if (manufacturerUser) {
+          await sendManufacturerUpdate(
+            manufacturerUser.id,
+            manufacturer.name,
+            isActive ? 'Your account has been activated' : 'Your account has been deactivated',
+            adminName
+          );
+        }
+      } catch (notifyErr) {
+        console.error('Failed to send manufacturer status notification:', notifyErr);
       }
     }
 

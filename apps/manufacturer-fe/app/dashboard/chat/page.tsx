@@ -14,8 +14,8 @@ import {
 } from "react-icons/fi";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
-// Default WebSocket to the dedicated WS service port (3003) to avoid HTTP fallbacks.
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:3003";
+// Connect to admin-be WebSocket server for chat functionality
+const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:3000/ws";
 
 interface User {
   id: string;
@@ -78,19 +78,24 @@ export default function ChatPage() {
         type: "AUTH",
         payload: { token },
       }));
-      setIsConnected(true);
     };
 
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
         
-        if (data.type === "CHAT_RECEIVED") {
+        if (data.type === "AUTH" && data.payload?.success) {
+          setIsConnected(true);
+          console.log("WebSocket authenticated:", data.payload);
+        } else if (data.type === "ERROR" || (data.type === "AUTH" && !data.payload?.success)) {
+          console.error("WebSocket error:", data.error || data.payload?.error);
+          setIsConnected(false);
+        } else if (data.type === "CHAT_RECEIVED") {
           const chatData = data.payload;
           const newMsg: Message = {
-            id: Date.now().toString(),
+            id: data.messageId || Date.now().toString(),
             senderId: chatData.senderId,
-            senderName: chatData.senderName,
+            senderName: chatData.senderName || chatData.senderId,
             senderRole: chatData.senderRole,
             recipientId: chatData.recipientId,
             message: chatData.message,

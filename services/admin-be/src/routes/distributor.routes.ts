@@ -274,6 +274,54 @@ router.patch('/:id/verify', async (req: Request, res: Response) => {
 });
 
 /**
+ * PATCH /api/distributor/:id/status
+ * Activate/deactivate distributor
+ */
+router.patch('/:id/status', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { isActive } = req.body;
+
+    const distributorId = Array.isArray(id) ? id[0] : id;
+    if (!distributorId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Distributor ID is required',
+      });
+    }
+
+    const distributor = await prisma.distributor.update({
+      where: { id: distributorId },
+      data: { isActive: isActive === true } as any,
+    });
+
+    // Create audit trail
+    const userId = (req as any).user?.userId || 'system';
+    const userRole = (req as any).user?.role || 'ADMIN';
+    await createAuditTrail({
+      entityType: 'DISTRIBUTOR',
+      entityId: distributorId ?? '',
+      action: 'UPDATE',
+      fieldName: 'isActive',
+      oldValue: String(!isActive),
+      newValue: String(isActive),
+      performedBy: userId,
+      performedByRole: userRole,
+    });
+
+    res.json({
+      success: true,
+      data: distributor,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Internal server error',
+    });
+  }
+});
+
+/**
  * DELETE /api/distributor/:id
  * Delete distributor
  */

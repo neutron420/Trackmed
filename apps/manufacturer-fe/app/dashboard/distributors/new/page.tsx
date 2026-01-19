@@ -34,6 +34,7 @@ export default function NewDistributorPage() {
     name: "",
     licenseNumber: "",
     address: "",
+    pincode: "",
     city: "",
     state: "",
     country: "India",
@@ -41,6 +42,7 @@ export default function NewDistributorPage() {
     email: "",
     gstNumber: "",
   });
+  const [pincodeLoading, setPincodeLoading] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -73,6 +75,46 @@ export default function NewDistributorPage() {
     }
   };
 
+  // Auto-fetch city and state from pincode
+  const fetchPincodeDetails = async (pincode: string) => {
+    if (pincode.length !== 6 || !/^\d{6}$/.test(pincode)) return;
+    
+    setPincodeLoading(true);
+    try {
+      const response = await fetch(`https://api.postalpincode.in/pincode/${pincode}`);
+      const data = await response.json();
+      
+      if (data[0]?.Status === "Success" && data[0]?.PostOffice?.length > 0) {
+        const postOffice = data[0].PostOffice[0];
+        setFormData((prev) => ({
+          ...prev,
+          city: postOffice.District || postOffice.Block || prev.city,
+          state: postOffice.State || prev.state,
+        }));
+        // Clear any previous errors
+        setErrors((prev) => ({ ...prev, pincode: "", city: "", state: "" }));
+      } else {
+        setErrors((prev) => ({ ...prev, pincode: "Invalid pincode" }));
+      }
+    } catch (error) {
+      console.error("Failed to fetch pincode details:", error);
+    } finally {
+      setPincodeLoading(false);
+    }
+  };
+
+  const handlePincodeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.replace(/\D/g, "").slice(0, 6);
+    setFormData((prev) => ({ ...prev, pincode: value }));
+    if (errors.pincode) {
+      setErrors((prev) => ({ ...prev, pincode: "" }));
+    }
+    // Auto-fetch when 6 digits entered
+    if (value.length === 6) {
+      fetchPincodeDetails(value);
+    }
+  };
+
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
 
@@ -84,6 +126,9 @@ export default function NewDistributorPage() {
     }
     if (!formData.address.trim()) {
       newErrors.address = "Address is required";
+    }
+    if (!formData.pincode.trim() || formData.pincode.length !== 6) {
+      newErrors.pincode = "Valid 6-digit pincode is required";
     }
     if (!formData.city.trim()) {
       newErrors.city = "City is required";
@@ -303,6 +348,34 @@ export default function NewDistributorPage() {
                     }`}
                   />
                   {errors.address && <p className="mt-1 text-xs text-red-500">{errors.address}</p>}
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">
+                    Pincode <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      name="pincode"
+                      value={formData.pincode}
+                      onChange={handlePincodeChange}
+                      placeholder="400001"
+                      maxLength={6}
+                      className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 ${
+                        errors.pincode
+                          ? "border-red-300 focus:border-red-500 focus:ring-red-500/20"
+                          : "border-slate-200 focus:border-emerald-500 focus:ring-emerald-500/20"
+                      }`}
+                    />
+                    {pincodeLoading && (
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
+                      </div>
+                    )}
+                  </div>
+                  {errors.pincode && <p className="mt-1 text-xs text-red-500">{errors.pincode}</p>}
+                  <p className="mt-1 text-xs text-slate-400">Enter 6-digit pincode to auto-fill city & state</p>
                 </div>
 
                 <div>

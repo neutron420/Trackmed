@@ -70,6 +70,7 @@ model Manufacturer {
   gstNumber       String?  @map("gst_number")
   walletAddress   String   @unique @map("wallet_address") // Links to blockchain manufacturer_wallet
   isVerified      Boolean  @default(false) @map("is_verified")
+  isActive        Boolean  @default(true) @map("is_active")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
@@ -79,6 +80,7 @@ model Manufacturer {
   @@index([name])
   @@index([walletAddress])
   @@index([isVerified])
+  @@index([isActive])
   @@index([createdAt])
   @@map("manufacturers")
 }
@@ -311,6 +313,7 @@ model Distributor {
   email           String?
   gstNumber       String?  @map("gst_number")
   isVerified      Boolean  @default(false) @map("is_verified")
+  isActive        Boolean  @default(true) @map("is_active")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
@@ -320,6 +323,7 @@ model Distributor {
 
   @@index([name])
   @@index([isVerified])
+  @@index([isActive])
   @@index([createdAt])
   @@map("distributors")
 }

@@ -516,95 +516,123 @@ async function getCategoryDistribution() {
 }
 
 /**
- * Get geographic order data for map
+ * Get geographic order data for map - STATE-WISE AGGREGATION
  */
 async function getGeographicOrderData() {
-  // Get distributors with their locations and shipment counts
-  const distributors = await prisma.distributor.findMany({
-    select: {
-      id: true,
-      name: true,
-      city: true,
-      state: true,
-      _count: {
-        select: { shipments: true },
+  // State coordinates (capital cities)
+  const stateCoordinates: Record<string, { lat: number; lng: number; capital: string }> = {
+    'Andhra Pradesh': { lat: 15.9129, lng: 79.7400, capital: 'Amaravati' },
+    'Arunachal Pradesh': { lat: 27.0844, lng: 93.6053, capital: 'Itanagar' },
+    'Assam': { lat: 26.1445, lng: 91.7362, capital: 'Dispur' },
+    'Bihar': { lat: 25.6093, lng: 85.1376, capital: 'Patna' },
+    'Chhattisgarh': { lat: 21.2514, lng: 81.6296, capital: 'Raipur' },
+    'Goa': { lat: 15.4909, lng: 73.8278, capital: 'Panaji' },
+    'Gujarat': { lat: 23.2156, lng: 72.6369, capital: 'Gandhinagar' },
+    'Haryana': { lat: 29.0588, lng: 76.0856, capital: 'Chandigarh' },
+    'Himachal Pradesh': { lat: 31.1048, lng: 77.1734, capital: 'Shimla' },
+    'Jharkhand': { lat: 23.3441, lng: 85.3096, capital: 'Ranchi' },
+    'Karnataka': { lat: 12.9716, lng: 77.5946, capital: 'Bengaluru' },
+    'Kerala': { lat: 8.5241, lng: 76.9366, capital: 'Thiruvananthapuram' },
+    'Madhya Pradesh': { lat: 23.2599, lng: 77.4126, capital: 'Bhopal' },
+    'Maharashtra': { lat: 19.0760, lng: 72.8777, capital: 'Mumbai' },
+    'Manipur': { lat: 24.8170, lng: 93.9368, capital: 'Imphal' },
+    'Meghalaya': { lat: 25.5788, lng: 91.8933, capital: 'Shillong' },
+    'Mizoram': { lat: 23.7271, lng: 92.7176, capital: 'Aizawl' },
+    'Nagaland': { lat: 25.6751, lng: 94.1086, capital: 'Kohima' },
+    'Odisha': { lat: 20.2961, lng: 85.8245, capital: 'Bhubaneswar' },
+    'Punjab': { lat: 30.7333, lng: 76.7794, capital: 'Chandigarh' },
+    'Rajasthan': { lat: 26.9124, lng: 75.7873, capital: 'Jaipur' },
+    'Sikkim': { lat: 27.3389, lng: 88.6065, capital: 'Gangtok' },
+    'Tamil Nadu': { lat: 13.0827, lng: 80.2707, capital: 'Chennai' },
+    'Telangana': { lat: 17.3850, lng: 78.4867, capital: 'Hyderabad' },
+    'Tripura': { lat: 23.8315, lng: 91.2868, capital: 'Agartala' },
+    'Uttar Pradesh': { lat: 26.8467, lng: 80.9462, capital: 'Lucknow' },
+    'Uttarakhand': { lat: 30.3165, lng: 78.0322, capital: 'Dehradun' },
+    'West Bengal': { lat: 22.5726, lng: 88.3639, capital: 'Kolkata' },
+    'Delhi': { lat: 28.6139, lng: 77.2090, capital: 'New Delhi' },
+    'Chandigarh': { lat: 30.7333, lng: 76.7794, capital: 'Chandigarh' },
+    'Puducherry': { lat: 11.9416, lng: 79.8083, capital: 'Puducherry' },
+    'Ladakh': { lat: 34.1526, lng: 77.5771, capital: 'Leh' },
+    'Jammu and Kashmir': { lat: 34.0837, lng: 74.7973, capital: 'Srinagar' },
+  };
+
+  // Get all entities with their state info
+  const [distributors, manufacturers, pharmacies] = await Promise.all([
+    prisma.distributor.findMany({
+      select: {
+        state: true,
+        _count: { select: { shipments: true, batches: true } },
       },
-    },
+    }),
+    prisma.manufacturer.findMany({
+      select: {
+        state: true,
+        _count: { select: { batches: true } },
+      },
+    }).catch(() => []),
+    prisma.pharmacy.findMany({
+      select: {
+        state: true,
+        _count: { select: { batches: true } },
+      },
+    }).catch(() => []),
+  ]);
+
+  // Aggregate by state
+  const stateAggregation: Record<string, { entities: number; shipments: number; batches: number }> = {};
+
+  distributors.forEach((d: any) => {
+    const state = d.state || '';
+    if (state && stateCoordinates[state]) {
+      if (!stateAggregation[state]) {
+        stateAggregation[state] = { entities: 0, shipments: 0, batches: 0 };
+      }
+      stateAggregation[state].entities += 1;
+      stateAggregation[state].shipments += d._count?.shipments || 0;
+      stateAggregation[state].batches += d._count?.batches || 0;
+    }
   });
 
-  // City coordinates (major Indian cities)
-  const cityCoordinates: Record<string, { lat: number; lng: number }> = {
-    'Mumbai': { lat: 19.076, lng: 72.8777 },
-    'Delhi': { lat: 28.6139, lng: 77.209 },
-    'Bangalore': { lat: 12.9716, lng: 77.5946 },
-    'Hyderabad': { lat: 17.385, lng: 78.4867 },
-    'Chennai': { lat: 13.0827, lng: 80.2707 },
-    'Kolkata': { lat: 22.5726, lng: 88.3639 },
-    'Pune': { lat: 18.5204, lng: 73.8567 },
-    'Ahmedabad': { lat: 23.0225, lng: 72.5714 },
-    'Jaipur': { lat: 26.9124, lng: 75.7873 },
-    'Lucknow': { lat: 26.8467, lng: 80.9462 },
-    'Surat': { lat: 21.1702, lng: 72.8311 },
-    'Kanpur': { lat: 26.4499, lng: 80.3319 },
-    'Nagpur': { lat: 21.1458, lng: 79.0882 },
-    'Indore': { lat: 22.7196, lng: 75.8577 },
-    'Thane': { lat: 19.2183, lng: 72.9781 },
-    'Bhopal': { lat: 23.2599, lng: 77.4126 },
-    'Visakhapatnam': { lat: 17.6868, lng: 83.2185 },
-    'Patna': { lat: 25.5941, lng: 85.1376 },
-    'Vadodara': { lat: 22.3072, lng: 73.1812 },
-    'Ghaziabad': { lat: 28.6692, lng: 77.4538 },
-    'Coimbatore': { lat: 11.0168, lng: 76.9558 },
-    'Kochi': { lat: 9.9312, lng: 76.2673 },
-  };
-
-  // State coordinates (fallback)
-  const stateCoordinates: Record<string, { lat: number; lng: number }> = {
-    'Maharashtra': { lat: 19.7515, lng: 75.7139 },
-    'Delhi': { lat: 28.7041, lng: 77.1025 },
-    'Karnataka': { lat: 15.3173, lng: 75.7139 },
-    'Tamil Nadu': { lat: 11.1271, lng: 78.6569 },
-    'Gujarat': { lat: 22.2587, lng: 71.1924 },
-    'Rajasthan': { lat: 27.0238, lng: 74.2179 },
-    'Uttar Pradesh': { lat: 26.8467, lng: 80.9462 },
-    'West Bengal': { lat: 22.9868, lng: 87.855 },
-    'Kerala': { lat: 10.8505, lng: 76.2711 },
-    'Punjab': { lat: 31.1471, lng: 75.3412 },
-    'Haryana': { lat: 29.0588, lng: 76.0856 },
-    'Bihar': { lat: 25.0961, lng: 85.3131 },
-    'Madhya Pradesh': { lat: 22.9734, lng: 78.6569 },
-    'Telangana': { lat: 18.1124, lng: 79.0193 },
-    'Andhra Pradesh': { lat: 15.9129, lng: 79.74 },
-  };
-
-  const locations = distributors.map((d) => {
-    const cityCoord = d.city ? cityCoordinates[d.city] : null;
-    const stateCoord = d.state ? stateCoordinates[d.state] : null;
-    const coord = cityCoord || stateCoord || { lat: 20.5937, lng: 78.9629 }; // Default: center of India
-
-    return {
-      id: d.id,
-      name: d.name,
-      city: d.city || 'Unknown',
-      state: d.state || 'Unknown',
-      lat: coord.lat + (Math.random() - 0.5) * 0.5, // Add slight randomization
-      lng: coord.lng + (Math.random() - 0.5) * 0.5,
-      orders: d._count.shipments,
-      size: Math.max(10, Math.min(50, d._count.shipments * 5)), // Size based on orders
-    };
+  (manufacturers as any[]).forEach((m: any) => {
+    const state = m.state || '';
+    if (state && stateCoordinates[state]) {
+      if (!stateAggregation[state]) {
+        stateAggregation[state] = { entities: 0, shipments: 0, batches: 0 };
+      }
+      stateAggregation[state].entities += 1;
+      stateAggregation[state].batches += m._count?.batches || 0;
+    }
   });
 
-  // Also add warehouse location
-  locations.push({
-    id: 'warehouse',
-    name: 'Main Warehouse',
-    city: 'Mumbai',
-    state: 'Maharashtra',
-    lat: 19.076,
-    lng: 72.8777,
-    orders: 0,
-    size: 60,
+  (pharmacies as any[]).forEach((p: any) => {
+    const state = p.state || '';
+    if (state && stateCoordinates[state]) {
+      if (!stateAggregation[state]) {
+        stateAggregation[state] = { entities: 0, shipments: 0, batches: 0 };
+      }
+      stateAggregation[state].entities += 1;
+      stateAggregation[state].batches += p._count?.batches || 0;
+    }
   });
+
+  // Convert to geographic data format
+  const locations = Object.entries(stateAggregation)
+    .filter(([state]) => stateCoordinates[state])
+    .map(([state, data]) => {
+      const coord = stateCoordinates[state]!;
+      const totalActivity = data.entities + data.shipments + data.batches;
+      return {
+        id: state,
+        name: state,
+        city: coord.capital,
+        state: state,
+        lat: coord.lat,
+        lng: coord.lng,
+        orders: totalActivity,
+        size: Math.max(12, Math.min(50, totalActivity * 3)),
+      };
+    })
+    .sort((a, b) => b.orders - a.orders);
 
   return locations;
 }
