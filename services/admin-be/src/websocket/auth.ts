@@ -1,9 +1,17 @@
 import jwt from 'jsonwebtoken';
 import WebSocket from 'ws';
-import { UserRole } from '@prisma/client';
 import prisma from '../config/database';
 import { AuthenticatedSocket } from '../types/websocket';
 
+// Local UserRole type mirroring Prisma enum `UserRole`
+type UserRoleType =
+  | 'ADMIN'
+  | 'SUPERADMIN'
+  | 'MANUFACTURER'
+  | 'DISTRIBUTOR'
+  | 'PHARMACY'
+  | 'SCANNER'
+  | 'CONSUMER';
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
 export interface AuthPayload {
@@ -36,7 +44,7 @@ export async function authenticateWebSocket(
     }
 
     socket.userId = user.id;
-    socket.role = user.role as UserRole;
+    socket.role = user.role as UserRoleType;
 
     return {
       success: true,

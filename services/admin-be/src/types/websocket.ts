@@ -1,5 +1,14 @@
 import WebSocket from 'ws';
-import { UserRole } from '@prisma/client';
+
+// Local UserRole type mirroring Prisma enum `UserRole`
+export type UserRole =
+  | 'ADMIN'
+  | 'SUPERADMIN'
+  | 'MANUFACTURER'
+  | 'DISTRIBUTOR'
+  | 'PHARMACY'
+  | 'SCANNER'
+  | 'CONSUMER';
 
 export interface WebSocketClient {
   socket: WebSocket;

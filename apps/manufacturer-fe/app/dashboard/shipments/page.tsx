@@ -427,6 +427,35 @@ export default function ShipmentsPage() {
             </div>
 
             <div className="space-y-4">
+              {/* Medicine Image */}
+              <div className="flex justify-center">
+                <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-slate-100">
+                  {selectedShipment.batch?.imageUrl || selectedShipment.batch?.medicine?.imageUrl ? (
+                    <div className="relative h-32 w-44">
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="h-5 w-5 animate-spin rounded-full border-2 border-emerald-200 border-t-emerald-600" />
+                      </div>
+                      <img
+                        src={selectedShipment.batch?.imageUrl || selectedShipment.batch?.medicine?.imageUrl}
+                        alt={selectedShipment.batch?.medicine?.name || "Medicine"}
+                        className="relative z-10 h-32 w-44 object-cover"
+                        onLoad={(e) => { (e.target as HTMLImageElement).style.opacity = '1'; }}
+                        style={{ opacity: 0, transition: 'opacity 0.25s ease-in' }}
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex h-32 w-44 flex-col items-center justify-center p-3">
+                      <svg className="h-10 w-10 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+                      </svg>
+                      <p className="mt-1 text-[10px] font-medium text-slate-400">
+                        {selectedShipment.batch?.medicine?.name || "Medicine"}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-xs text-slate-500">Shipment Number</p>

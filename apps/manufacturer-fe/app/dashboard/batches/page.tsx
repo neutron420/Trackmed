@@ -15,13 +15,17 @@ interface User {
 interface Batch {
   id: string;
   batchNumber: string;
-  medicine: { name: string; strength: string };
+  medicine: { name: string; strength: string; imageUrl?: string };
   quantity: number;
   remainingQuantity: number;
   manufacturingDate: string;
   expiryDate: string;
   status: string;
   lifecycleStatus: string;
+  gstNumber?: string;
+  warehouseLocation?: string;
+  warehouseAddress?: string;
+  imageUrl?: string;
 }
 
 export default function BatchesPage() {
@@ -31,6 +35,7 @@ export default function BatchesPage() {
   const [batches, setBatches] = useState<Batch[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedBatch, setSelectedBatch] = useState<Batch | null>(null);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -207,16 +212,19 @@ export default function BatchesPage() {
                   label: "",
                   render: (item) => (
                     <button
-                      onClick={() => router.push(`/dashboard/batches/${item.id}`)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedBatch(item);
+                      }}
                       className="text-xs font-medium text-emerald-600 hover:text-emerald-700"
                     >
-                      View →
+                      View details
                     </button>
                   ),
                 },
               ]}
               data={filteredBatches}
-              onRowClick={(item) => router.push(`/dashboard/batches/${item.id}`)}
+              onRowClick={(item) => setSelectedBatch(item)}
             />
             {filteredBatches.length === 0 && (
               <div className="py-12 text-center">
@@ -230,6 +238,133 @@ export default function BatchesPage() {
               </div>
             )}
           </div>
+          {/* Batch Details Modal */}
+          {selectedBatch && (
+            <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4">
+              <div className="w-full max-w-lg rounded-2xl bg-white shadow-xl">
+                <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+                  <div>
+                    <h2 className="text-sm font-semibold text-slate-900">
+                      Batch {selectedBatch.batchNumber}
+                    </h2>
+                    <p className="text-[11px] text-slate-500">
+                      {selectedBatch.medicine?.name} {selectedBatch.medicine?.strength}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setSelectedBatch(null)}
+                    className="rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                  >
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+
+                <div className="space-y-4 px-5 py-4 text-xs text-slate-700">
+                  {/* Medicine Image */}
+                  <div className="flex justify-center">
+                    <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-slate-100">
+                      {selectedBatch.imageUrl || selectedBatch.medicine?.imageUrl ? (
+                        <div className="relative h-36 w-48">
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <div className="h-6 w-6 animate-spin rounded-full border-2 border-emerald-200 border-t-emerald-600" />
+                          </div>
+                          <img
+                            src={selectedBatch.imageUrl || selectedBatch.medicine?.imageUrl}
+                            alt={selectedBatch.medicine?.name || "Medicine"}
+                            className="relative z-10 h-36 w-48 object-cover"
+                            onLoad={(e) => { (e.target as HTMLImageElement).style.opacity = '1'; }}
+                            style={{ opacity: 0, transition: 'opacity 0.25s ease-in' }}
+                          />
+                        </div>
+                      ) : (
+                        <div className="flex h-36 w-48 flex-col items-center justify-center p-4">
+                          <svg className="h-12 w-12 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+                          </svg>
+                          <p className="mt-2 text-[11px] font-medium text-slate-400">
+                            {selectedBatch.medicine?.name || "Medicine"}
+                          </p>
+                          <p className="text-[10px] text-slate-300">No image available</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <p className="text-[11px] text-slate-500">Quantity</p>
+                      <p className="mt-0.5 font-medium">
+                        {selectedBatch.quantity?.toLocaleString()} units
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-slate-500">Remaining Qty</p>
+                      <p className="mt-0.5 font-medium">
+                        {selectedBatch.remainingQuantity?.toLocaleString()}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-slate-500">Manufacturing Date</p>
+                      <p className="mt-0.5">
+                        {new Date(selectedBatch.manufacturingDate).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-slate-500">Expiry Date</p>
+                      <p className="mt-0.5">
+                        {new Date(selectedBatch.expiryDate).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-slate-500">GST Number</p>
+                      <p className="mt-0.5">
+                        {selectedBatch.gstNumber || "—"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-slate-500">Lifecycle Status</p>
+                      <div className="mt-0.5">
+                        <StatusBadge status={getStatusVariant(selectedBatch.lifecycleStatus || selectedBatch.status)} />
+                      </div>
+                    </div>
+                  </div>
+
+                  {(selectedBatch.warehouseLocation || selectedBatch.warehouseAddress) && (
+                    <div className="rounded-lg bg-slate-50 p-3">
+                      <p className="text-[11px] font-semibold text-slate-600">Warehouse</p>
+                      {selectedBatch.warehouseLocation && (
+                        <p className="mt-0.5 text-slate-800">{selectedBatch.warehouseLocation}</p>
+                      )}
+                      {selectedBatch.warehouseAddress && (
+                        <p className="mt-0.5 text-[11px] text-slate-600 whitespace-pre-line">
+                          {selectedBatch.warehouseAddress}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between gap-3 border-t border-slate-200 px-5 py-3">
+                  <button
+                    onClick={() => router.push("/dashboard/qr-codes")}
+                    className="text-xs font-medium text-emerald-600 hover:text-emerald-700"
+                  >
+                    Manage QR codes →
+                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setSelectedBatch(null)}
+                      className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </main>
     </div>

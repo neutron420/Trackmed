@@ -30,6 +30,7 @@ export default function QRCodesPage() {
   const [qrQuantity, setQrQuantity] = useState<number>(10);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedCodes, setGeneratedCodes] = useState<any[]>([]);
+  const [selectedQR, setSelectedQR] = useState<any | null>(null);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -227,30 +228,33 @@ export default function QRCodesPage() {
                 </button>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8">
-                {generatedCodes.slice(0, 16).map((qr, index) => (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
+                {generatedCodes.slice(0, 12).map((qr, index) => (
                   <div
                     key={index}
-                    className="flex aspect-square items-center justify-center rounded-lg border border-slate-200 bg-slate-50 p-2"
+                    onClick={() => setSelectedQR(qr)}
+                    className="group relative cursor-pointer overflow-hidden rounded-lg border border-slate-200 bg-white p-2 transition-all hover:border-emerald-300 hover:shadow-md"
                   >
-                    {/* Placeholder QR visual */}
-                    <div className="grid h-full w-full grid-cols-5 gap-0.5">
-                      {Array.from({ length: 25 }).map((_, i) => (
-                        <div
-                          key={i}
-                          className={`rounded-sm ${
-                            Math.random() > 0.5 ? "bg-slate-800" : "bg-white"
-                          }`}
-                        />
-                      ))}
+                    {/* Real QR Code using QR Server API */}
+                    <img
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qr.code || qr.id)}`}
+                      alt={`QR Code ${index + 1}`}
+                      className="h-full w-full object-contain"
+                      loading="lazy"
+                    />
+                    {/* Code label on hover */}
+                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-2 opacity-0 transition-opacity group-hover:opacity-100">
+                      <p className="truncate text-[10px] font-medium text-white">
+                        {(qr.code || qr.id).slice(0, 16)}...
+                      </p>
                     </div>
                   </div>
                 ))}
               </div>
 
-              {generatedCodes.length > 16 && (
+              {generatedCodes.length > 12 && (
                 <p className="mt-3 text-center text-xs text-slate-500">
-                  +{generatedCodes.length - 16} more codes generated
+                  +{generatedCodes.length - 12} more codes generated (click to view full size)
                 </p>
               )}
             </div>
@@ -312,6 +316,98 @@ export default function QRCodesPage() {
           </div>
         </div>
       </main>
+
+      {/* QR Code Detail Modal */}
+      {selectedQR && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setSelectedQR(null)}
+        >
+          <div
+            className="relative w-full max-w-md rounded-xl bg-white p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setSelectedQR(null)}
+              className="absolute right-4 top-4 rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            >
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            <h3 className="mb-4 text-lg font-semibold text-slate-900">QR Code Details</h3>
+
+            {/* Large QR Code Image with Loading */}
+            <div className="mb-4 flex items-center justify-center rounded-lg border border-slate-200 bg-white p-4" style={{ minHeight: '280px' }}>
+              <div className="relative h-64 w-64">
+                {/* Loading spinner behind image */}
+                <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-slate-50">
+                  <div className="h-10 w-10 animate-spin rounded-full border-4 border-emerald-200 border-t-emerald-600" />
+                </div>
+                {/* QR Image - fades in when loaded */}
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(selectedQR.code || selectedQR.id)}`}
+                  alt="QR Code"
+                  className="relative z-10 h-64 w-64 rounded bg-white"
+                  onLoad={(e) => { (e.target as HTMLImageElement).style.opacity = '1'; }}
+                  style={{ opacity: 0, transition: 'opacity 0.25s ease-in' }}
+                />
+              </div>
+            </div>
+
+            {/* QR Code Info */}
+            <div className="mb-4 space-y-2">
+              <div className="rounded-lg bg-slate-50 p-3">
+                <p className="text-xs font-medium text-slate-500">Code</p>
+                <p className="break-all font-mono text-sm text-slate-900">{selectedQR.code || selectedQR.id}</p>
+              </div>
+              {selectedQR.unitNumber && (
+                <div className="rounded-lg bg-slate-50 p-3">
+                  <p className="text-xs font-medium text-slate-500">Unit Number</p>
+                  <p className="text-sm text-slate-900">{selectedQR.unitNumber}</p>
+                </div>
+              )}
+              <div className="rounded-lg bg-slate-50 p-3">
+                <p className="text-xs font-medium text-slate-500">Status</p>
+                <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                  selectedQR.isActive !== false ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"
+                }`}>
+                  {selectedQR.isActive !== false ? "Active" : "Inactive"}
+                </span>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(selectedQR.code || selectedQR.id);
+                  alert("Code copied to clipboard!");
+                }}
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+                Copy Code
+              </button>
+              <a
+                href={`https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(selectedQR.code || selectedQR.id)}`}
+                download={`qr-${(selectedQR.code || selectedQR.id).slice(0, 12)}.png`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-700"
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                Download
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

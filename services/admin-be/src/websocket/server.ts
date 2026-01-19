@@ -1,11 +1,10 @@
 import WebSocket, { Server as WebSocketServer } from 'ws';
 import { Server } from 'http';
-import { AuthenticatedSocket, WebSocketMessage, LocationMessage, ChatMessage } from '../types/websocket';
+import { AuthenticatedSocket, WebSocketMessage, LocationMessage, ChatMessage, UserRole } from '../types/websocket';
 import { authenticateWebSocket, sendAuthError } from './auth';
 import { clientManager } from './client-manager';
 import { handleLocationMessage, validateLocationMessage } from './location-handler';
 import { handleChatMessage, validateChatMessage } from './chat-handler';
-import { UserRole } from '@prisma/client';
 
 let wss: WebSocketServer | null = null;
 
@@ -37,10 +36,12 @@ export function initializeWebSocketServer(httpServer: Server): void {
 
             isAuthenticated = true;
 
+            const role = (authResult.role || 'SCANNER') as UserRole;
+
             const client = {
               socket: authSocket,
               userId: authResult.userId!,
-              role: authResult.role as UserRole,
+              role,
               connectedAt: new Date(),
             };
 

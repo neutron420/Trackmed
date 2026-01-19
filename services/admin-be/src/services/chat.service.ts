@@ -77,7 +77,7 @@ export async function getOnlineUsers() {
     },
   });
 
-  return users.map((u) => ({
+  return users.map((u: { id: string; name: string | null; email: string; role: string }) => ({
     id: u.id,
     name: u.name || u.email,
     email: u.email,
@@ -112,7 +112,7 @@ export async function getChatUsers(currentUserId: string) {
     },
   });
 
-  return users.map((u) => ({
+  return users.map((u: { id: string; name: string | null; email: string; role: string }) => ({
     id: u.id,
     name: u.name || u.email.split('@')[0],
     email: u.email,

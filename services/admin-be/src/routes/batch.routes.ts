@@ -33,9 +33,9 @@ router.post('/register', async (req: Request, res: Response) => {
       manufacturerWalletPrivateKey, // Base58 encoded private key
     } = req.body;
 
-    // Validate required fields
+    // Validate required fields (manufacturerId is optional - will be found by wallet address)
     if (!batchHash || !batchNumber || !manufacturingDate || !expiryDate || 
-        !manufacturerId || !medicineId || !quantity || !manufacturerWalletPrivateKey) {
+        !medicineId || !quantity || !manufacturerWalletPrivateKey) {
       return res.status(400).json({
         success: false,
         error: 'Missing required fields',
@@ -43,16 +43,68 @@ router.post('/register', async (req: Request, res: Response) => {
     }
 
     // Reconstruct wallet from private key
-    const privateKeyBytes = bs58.decode(manufacturerWalletPrivateKey);
-    const manufacturerWallet = Keypair.fromSecretKey(privateKeyBytes);
+    let manufacturerWallet: Keypair;
+    try {
+      // Validate base58 format
+      if (!manufacturerWalletPrivateKey || typeof manufacturerWalletPrivateKey !== 'string') {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid wallet private key format',
+        });
+      }
 
-    // Register batch
+      // Trim whitespace from the key
+      const trimmedKey = manufacturerWalletPrivateKey.trim();
+
+      // Check if it's a demo/test key
+      if (trimmedKey === 'demo-key' || trimmedKey === 'test-key') {
+        return res.status(400).json({
+          success: false,
+          error: 'Please use a valid Solana wallet private key. Demo keys are not supported for blockchain registration.',
+        });
+      }
+
+      // Validate key format (base58 should only contain alphanumeric characters except 0, O, I, l)
+      if (!/^[1-9A-HJ-NP-Za-km-z]+$/.test(trimmedKey)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid wallet private key format. The key must be base58-encoded (no 0, O, I, or l characters).',
+        });
+      }
+
+      // Decode base58 to bytes
+      const privateKeyBytes = bs58.decode(trimmedKey);
+      
+      // Validate key length (Solana private keys are 64 bytes)
+      if (privateKeyBytes.length !== 64) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid private key length. Solana private keys must be 64 bytes.',
+        });
+      }
+
+      // Construct Keypair from secret key bytes
+      manufacturerWallet = Keypair.fromSecretKey(privateKeyBytes);
+    } catch (error: any) {
+      if (error?.message && error.message.includes('Non-base58')) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid wallet private key format. The key must be base58-encoded.',
+        });
+      }
+      return res.status(400).json({
+        success: false,
+        error: `Invalid wallet private key: ${error?.message || 'Unknown error'}`,
+      });
+    }
+
+    // Register batch (manufacturerId will be found by wallet address)
     const result = await registerBatch(manufacturerWallet, {
       batchHash,
       batchNumber,
       manufacturingDate: new Date(manufacturingDate),
       expiryDate: new Date(expiryDate),
-      manufacturerId,
+      manufacturerId: manufacturerId || '', // Optional - will be found by wallet address
       medicineId,
       quantity: parseInt(quantity),
       invoiceNumber,
@@ -224,6 +276,69 @@ router.patch('/:batchHash/status', async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     res.status(500).json({
+      success: false,
+      error: error.message || 'Internal server error',
+    });
+  }
+});
+
+/**
+ * GET /api/batch
+ * List batches (database only)
+ * Used by manufacturer dashboard batches page
+ */
+router.get('/', async (req: Request, res: Response) => {
+  try {
+    const page = parseInt(asString(req.query.page as any) || '1', 10) || 1;
+    const limit = parseInt(asString(req.query.limit as any) || '20', 10) || 20;
+    const skip = (page - 1) * limit;
+    const search = asString(req.query.search as any);
+
+    const where: any = {};
+    if (search) {
+      where.OR = [
+        { batchNumber: { contains: search, mode: 'insensitive' } },
+        { batchHash: { contains: search, mode: 'insensitive' } },
+        { invoiceNumber: { contains: search, mode: 'insensitive' } },
+        { medicine: { name: { contains: search, mode: 'insensitive' } } },
+      ];
+    }
+
+    const [batches, total] = await Promise.all([
+      prisma.batch.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          medicine: {
+            select: {
+              name: true,
+              strength: true,
+            },
+          },
+          _count: {
+            select: {
+              qrCodes: true,
+            },
+          },
+        },
+      }),
+      prisma.batch.count({ where }),
+    ]);
+
+    return res.json({
+      success: true,
+      data: batches,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
+  } catch (error: any) {
+    return res.status(500).json({
       success: false,
       error: error.message || 'Internal server error',
     });

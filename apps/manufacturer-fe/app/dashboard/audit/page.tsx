@@ -72,64 +72,7 @@ export default function AuditPage() {
       }
     } catch (error) {
       console.error("Failed to fetch audit logs:", error);
-      // Demo data
-      setAuditLogs([
-        {
-          id: "1",
-          action: "CREATE",
-          entity: "Batch",
-          entityId: "BCH-2024-001",
-          userId: "usr-1",
-          userName: "John Doe",
-          details: { batchNumber: "BCH-2024-001", quantity: 1000 },
-          ipAddress: "192.168.1.100",
-          createdAt: new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString(),
-        },
-        {
-          id: "2",
-          action: "UPDATE",
-          entity: "Medicine",
-          entityId: "MED-001",
-          userId: "usr-2",
-          userName: "Jane Smith",
-          details: { field: "price", oldValue: 100, newValue: 120 },
-          ipAddress: "192.168.1.101",
-          createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-        },
-        {
-          id: "3",
-          action: "GENERATE_QR",
-          entity: "QRCode",
-          entityId: "QR-001",
-          userId: "usr-1",
-          userName: "John Doe",
-          details: { batchId: "BCH-2024-001", count: 100 },
-          ipAddress: "192.168.1.100",
-          createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
-        },
-        {
-          id: "4",
-          action: "VERIFY",
-          entity: "QRCode",
-          entityId: "QR-002",
-          userId: "usr-3",
-          userName: "Consumer App",
-          details: { result: "authentic", location: "Mumbai" },
-          ipAddress: "203.192.10.45",
-          createdAt: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
-        },
-        {
-          id: "5",
-          action: "DELETE",
-          entity: "Distributor",
-          entityId: "DIST-005",
-          userId: "usr-2",
-          userName: "Jane Smith",
-          details: { reason: "Inactive account" },
-          ipAddress: "192.168.1.101",
-          createdAt: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
-        },
-      ]);
+      setAuditLogs([]);
     } finally {
       setIsLoading(false);
     }
@@ -171,13 +114,20 @@ export default function AuditPage() {
     return `${days}d ago`;
   };
 
-  const filteredLogs = auditLogs.filter(
-    (log) =>
-      log.userName.toLowerCase().includes(search.toLowerCase()) ||
-      log.entity.toLowerCase().includes(search.toLowerCase()) ||
-      log.entityId.toLowerCase().includes(search.toLowerCase()) ||
-      log.action.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredLogs = auditLogs.filter((log) => {
+    const s = search.toLowerCase();
+    const userName = (log.userName || "").toLowerCase();
+    const entity = (log.entity || "").toLowerCase();
+    const entityId = (log.entityId || "").toLowerCase();
+    const action = (log.action || "").toLowerCase();
+
+    return (
+      userName.includes(s) ||
+      entity.includes(s) ||
+      entityId.includes(s) ||
+      action.includes(s)
+    );
+  });
 
   if (isLoading) {
     return (
@@ -260,8 +210,8 @@ export default function AuditPage() {
                     label: "Action",
                     render: (item) => (
                       <StatusBadge
-                        status={item.action.replace("_", " ")}
-                        variant={getActionVariant(item.action)}
+                        status={(item.action || "").replace("_", " ")}
+                        variant={getActionVariant(item.action || "")}
                       />
                     ),
                   },
@@ -270,8 +220,12 @@ export default function AuditPage() {
                     label: "Entity",
                     render: (item) => (
                       <div>
-                        <p className="text-xs font-medium text-slate-800">{item.entity}</p>
-                        <p className="text-xs text-slate-500">{item.entityId}</p>
+                        <p className="text-xs font-medium text-slate-800">
+                          {item.entity || "Unknown entity"}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {item.entityId || "N/A"}
+                        </p>
                       </div>
                     ),
                   },
@@ -281,25 +235,72 @@ export default function AuditPage() {
                     render: (item) => (
                       <div className="flex items-center gap-2">
                         <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100 text-xs font-medium text-emerald-700">
-                          {item.userName.charAt(0)}
+                          {(item.userName || "U").charAt(0)}
                         </span>
-                        <span className="text-xs text-slate-700">{item.userName}</span>
+                        <span className="text-xs text-slate-700">
+                          {item.userName || "Unknown user"}
+                        </span>
                       </div>
                     ),
                   },
                   {
                     key: "details",
                     label: "Details",
-                    render: (item) => (
-                      <code className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
-                        {JSON.stringify(item.details).slice(0, 50)}...
-                      </code>
-                    ),
+                    render: (item) => {
+                      const details = item.details;
+                      if (!details || Object.keys(details).length === 0) {
+                        return <span className="text-xs text-slate-400">—</span>;
+                      }
+                      
+                      // Extract key info to display
+                      const keyInfo: string[] = [];
+                      if (details.batchNumber) keyInfo.push(`Batch: ${details.batchNumber}`);
+                      if (details.quantity) keyInfo.push(`Qty: ${details.quantity}`);
+                      if (details.qrCodeCount) keyInfo.push(`QR: ${details.qrCodeCount}`);
+                      if (details.medicineName) keyInfo.push(details.medicineName);
+                      if (details.distributorData?.name) keyInfo.push(`To: ${details.distributorData.name}`);
+                      if (details.status) keyInfo.push(`Status: ${details.status}`);
+                      if (details.name && !details.batchNumber) keyInfo.push(details.name);
+                      
+                      if (keyInfo.length === 0) {
+                        // Fallback: show first few keys
+                        const keys = Object.keys(details).slice(0, 2);
+                        keys.forEach(k => {
+                          const val = details[k];
+                          if (typeof val === 'string' || typeof val === 'number') {
+                            keyInfo.push(`${k}: ${String(val).slice(0, 20)}`);
+                          }
+                        });
+                      }
+                      
+                      return (
+                        <div className="max-w-[200px]">
+                          {keyInfo.length > 0 ? (
+                            <div className="space-y-0.5">
+                              {keyInfo.slice(0, 2).map((info, i) => (
+                                <p key={i} className="truncate text-xs text-slate-600">
+                                  {info}
+                                </p>
+                              ))}
+                              {keyInfo.length > 2 && (
+                                <p className="text-xs text-slate-400">+{keyInfo.length - 2} more</p>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-slate-400">—</span>
+                          )}
+                        </div>
+                      );
+                    },
                   },
                   {
                     key: "ipAddress",
                     label: "IP",
-                    render: (item) => <span className="text-xs text-slate-500">{item.ipAddress}</span>,
+                    render: (item) => (
+                      <span className="text-xs text-slate-500">
+                        {item.ipAddress || "N/A"}
+                      </span>
+                    ),
                   },
                 ]}
                 data={filteredLogs}

@@ -1,7 +1,16 @@
 import { getWebSocketServer } from '../websocket/server';
 import { clientManager } from '../websocket/client-manager';
-import { UserRole } from '@prisma/client';
 import prisma from '../config/database';
+
+// Local UserRole type mirroring Prisma enum `UserRole`
+type UserRoleType =
+  | 'ADMIN'
+  | 'SUPERADMIN'
+  | 'MANUFACTURER'
+  | 'DISTRIBUTOR'
+  | 'PHARMACY'
+  | 'SCANNER'
+  | 'CONSUMER';
 
 export type NotificationType = 
   | 'FRAUD_ALERT'
@@ -26,7 +35,7 @@ export interface Notification {
   message: string;
   severity: NotificationSeverity;
   metadata?: any;
-  targetRoles?: UserRole[];
+  targetRoles?: UserRoleType[];
   targetUserIds?: string[];
 }
 

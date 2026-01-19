@@ -64,7 +64,7 @@ export async function getAuditTrails(
   if (entityType) where.entityType = entityType;
   if (entityId) where.entityId = entityId;
 
-  const [trails, total] = await Promise.all([
+  const [rawTrails, total] = await Promise.all([
     prisma.auditTrail.findMany({
       where,
       skip,
@@ -73,6 +73,27 @@ export async function getAuditTrails(
     }),
     prisma.auditTrail.count({ where }),
   ]);
+
+  // Fetch user names for performedBy IDs
+  const userIds = [...new Set(rawTrails.map(t => t.performedBy).filter(Boolean))];
+  const users = userIds.length > 0 
+    ? await prisma.user.findMany({
+        where: { id: { in: userIds } },
+        select: { id: true, name: true, email: true },
+      })
+    : [];
+  
+  const userMap = new Map(users.map(u => [u.id, u.name || u.email || 'Unknown']));
+
+  // Transform trails to include user-friendly fields
+  const trails = rawTrails.map(trail => ({
+    ...trail,
+    // Frontend-friendly field names
+    entity: trail.entityType,
+    userName: userMap.get(trail.performedBy) || trail.performedBy || 'System',
+    details: trail.metadata,
+    ipAddress: (trail.metadata as any)?.ipAddress || null,
+  }));
 
   return {
     trails,

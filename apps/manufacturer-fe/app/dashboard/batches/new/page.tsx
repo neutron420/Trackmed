@@ -31,6 +31,8 @@ export default function NewBatchPage() {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [medicines, setMedicines] = useState<Medicine[]>([]);
+  const [medicinesLoading, setMedicinesLoading] = useState(true);
+  const [medicinesError, setMedicinesError] = useState<string | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -47,6 +49,7 @@ export default function NewBatchPage() {
     warehouseAddress: "",
     warehousePincode: "",
     imageUrl: "",
+    walletPrivateKey: "",
   });
   
   const [pincodeLoading, setPincodeLoading] = useState(false);
@@ -74,19 +77,54 @@ export default function NewBatchPage() {
   }, [router]);
 
   const fetchMedicines = async (token: string) => {
+    console.log("🔵 Starting to fetch medicines...");
     try {
+      setMedicinesLoading(true);
+      setMedicinesError(null);
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+      console.log("🔵 API URL:", apiUrl);
+      
+      // Add timeout to prevent hanging
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => {
+        console.error("⏱️ Request timeout!");
+        controller.abort();
+      }, 10000); // 10 second timeout
+      
       const res = await fetch(`${apiUrl}/api/medicine?limit=1000`, {
         headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal,
       });
-      const data = await res.json();
-      if (data.success) {
-        setMedicines(data.data || []);
-      } else {
-        console.error("Failed to fetch medicines:", data.error);
+      
+      clearTimeout(timeoutId);
+      console.log("✅ Fetch completed, status:", res.status);
+      
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
       }
-    } catch (error) {
-      console.error("Failed to fetch medicines:", error);
+      
+      const data = await res.json();
+      console.log("📦 Response data:", data);
+      
+      if (data.success) {
+        const medicinesList = Array.isArray(data.data) ? data.data : [];
+        console.log(`✅ Loaded ${medicinesList.length} medicines`);
+        setMedicines(medicinesList);
+        setMedicinesError(null); // Clear any previous errors
+      } else {
+        console.error("❌ API returned success=false:", data.error);
+        setMedicinesError(data.error || "Failed to load medicines");
+      }
+    } catch (error: any) {
+      console.error("❌ Error fetching medicines:", error);
+      if (error.name === 'AbortError') {
+        setMedicinesError("Request timed out. Please check your connection and try again.");
+      } else {
+        setMedicinesError("Failed to load medicines. Please check your connection.");
+      }
+    } finally {
+      console.log("🏁 Setting loading to false");
+      setMedicinesLoading(false);
     }
   };
 
@@ -143,10 +181,20 @@ export default function NewBatchPage() {
       newErrors.quantity = "Valid quantity is required";
     if (!formData.manufacturingDate) newErrors.manufacturingDate = "Manufacturing date is required";
     if (!formData.expiryDate) newErrors.expiryDate = "Expiry date is required";
+    if (!formData.walletPrivateKey) newErrors.walletPrivateKey = "Solana wallet private key is required";
 
     if (formData.manufacturingDate && formData.expiryDate) {
       if (new Date(formData.expiryDate) <= new Date(formData.manufacturingDate)) {
         newErrors.expiryDate = "Expiry date must be after manufacturing date";
+      }
+    }
+
+    // Validate wallet private key format (basic check)
+    if (formData.walletPrivateKey) {
+      if (formData.walletPrivateKey === 'demo-key' || formData.walletPrivateKey === 'test-key') {
+        newErrors.walletPrivateKey = "Please use a valid Solana wallet private key. Demo keys are not supported.";
+      } else if (formData.walletPrivateKey.length < 32) {
+        newErrors.walletPrivateKey = "Invalid private key format. Please enter a valid base58-encoded Solana private key.";
       }
     }
 
@@ -200,9 +248,8 @@ export default function NewBatchPage() {
           gstNumber: formData.gstNumber || undefined,
           warehouseLocation: formData.warehouseLocation || undefined,
           warehouseAddress: formData.warehouseAddress || undefined,
-          // Note: For blockchain registration, you'd need the manufacturer wallet private key
-          // This is a simplified version - in production, use secure key management
-          manufacturerWalletPrivateKey: "demo-key", // Replace with actual key management
+          imageUrl: formData.imageUrl || undefined,
+          manufacturerWalletPrivateKey: formData.walletPrivateKey,
         }),
       });
 
@@ -287,18 +334,46 @@ export default function NewBatchPage() {
                   <label className="mb-1 block text-xs font-medium text-slate-700">
                     Medicine <span className="text-red-500">*</span>
                   </label>
-                  <MedicineSelect
-                    medicines={medicines}
-                    value={formData.medicineId}
-                    onChange={(medicineId) => setFormData({ ...formData, medicineId })}
-                    error={errors.medicineId}
-                  />
+                  {medicinesLoading ? (
+                    <div className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-500">
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
+                      <span>Loading medicines...</span>
+                    </div>
+                  ) : medicinesError ? (
+                    <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                      <p>{medicinesError}</p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const token = localStorage.getItem("token");
+                          if (token) fetchMedicines(token);
+                        }}
+                        className="mt-2 text-xs font-medium text-red-600 hover:text-red-700 underline"
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  ) : medicines.length === 0 ? (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                      <p>No medicines available. Please add a medicine first.</p>
+                    </div>
+                  ) : (
+                    <MedicineSelect
+                      medicines={medicines}
+                      value={formData.medicineId}
+                      onChange={(medicineId) => setFormData({ ...formData, medicineId })}
+                      error={errors.medicineId}
+                    />
+                  )}
                   <button
                     type="button"
                     onClick={() => router.push("/dashboard/products/new")}
-                    className="mt-2 text-xs text-emerald-600 hover:text-emerald-700"
+                    className="mt-2 flex items-center gap-1 text-xs font-medium text-emerald-600 hover:text-emerald-700"
                   >
-                    + Add new medicine
+                    <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    Add new medicine
                   </button>
                 </div>
 
@@ -563,22 +638,55 @@ export default function NewBatchPage() {
                     <p className="mt-2 text-red-500">{imageUploadError}</p>
                   )}
                   {imagePreview && formData.imageUrl && !imageUploading && (
-                    <div className="mt-2">
-                      <p className="text-emerald-600">✓ Image uploaded successfully</p>
+                    <div className="mt-2 flex items-center gap-2">
+                      <p className="text-emerald-600 text-xs">✓ Image uploaded successfully</p>
                       <button
                         type="button"
                         onClick={() => {
                           setImagePreview(null);
                           setFormData({ ...formData, imageUrl: "" });
                           setImageUploadError(null);
+                          if (fileInputRef.current) {
+                            fileInputRef.current.value = "";
+                          }
                         }}
-                        className="mt-1 text-red-500 hover:text-red-600"
+                        className="text-xs text-red-500 hover:text-red-600 underline"
                       >
-                        Remove image
+                        Remove
                       </button>
                     </div>
                   )}
                 </div>
+              </div>
+            </div>
+
+            {/* Blockchain Wallet */}
+            <div className="mb-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+              <h2 className="mb-4 text-sm font-semibold text-slate-900">Blockchain Wallet</h2>
+              <p className="mb-4 text-xs text-slate-600">
+                Enter your Solana wallet private key (base58-encoded) to register this batch on the blockchain.
+                This key is required for blockchain transactions and will not be stored.
+              </p>
+              
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-700">
+                  Solana Wallet Private Key <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="password"
+                  value={formData.walletPrivateKey}
+                  onChange={(e) => setFormData({ ...formData, walletPrivateKey: e.target.value })}
+                  placeholder="Enter your base58-encoded Solana private key"
+                  className={`w-full rounded-lg border px-3 py-2 text-sm font-mono ${
+                    errors.walletPrivateKey ? "border-red-300 bg-red-50" : "border-slate-200"
+                  } focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500`}
+                />
+                {errors.walletPrivateKey && (
+                  <p className="mt-1 text-xs text-red-500">{errors.walletPrivateKey}</p>
+                )}
+                <p className="mt-2 text-xs text-slate-500">
+                  ⚠️ Security: Your private key is never stored. It's only used for this transaction and cleared after submission.
+                </p>
               </div>
             </div>
 

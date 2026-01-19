@@ -151,31 +151,8 @@ export default function AnalyticsPage() {
   const regionalData = analytics?.regionalData || [];
   const lifecycle = analytics?.batchStats?.lifecycle;
 
-  // Sample geographic data for India map (fallback if no real data)
-  const sampleGeoData: GeoLocation[] = [
-    { id: '1', name: 'MedPlus Mumbai', city: 'Mumbai', state: 'Maharashtra', lat: 19.076, lng: 72.8777, orders: 156, size: 35 },
-    { id: '2', name: 'Apollo Delhi', city: 'Delhi', state: 'Delhi', lat: 28.6139, lng: 77.209, orders: 142, size: 32 },
-    { id: '3', name: 'Fortis Bangalore', city: 'Bangalore', state: 'Karnataka', lat: 12.9716, lng: 77.5946, orders: 128, size: 30 },
-    { id: '4', name: 'Max Healthcare Hyderabad', city: 'Hyderabad', state: 'Telangana', lat: 17.385, lng: 78.4867, orders: 98, size: 26 },
-    { id: '5', name: 'Manipal Chennai', city: 'Chennai', state: 'Tamil Nadu', lat: 13.0827, lng: 80.2707, orders: 112, size: 28 },
-    { id: '6', name: 'Columbia Kolkata', city: 'Kolkata', state: 'West Bengal', lat: 22.5726, lng: 88.3639, orders: 87, size: 24 },
-    { id: '7', name: 'Sahyadri Pune', city: 'Pune', state: 'Maharashtra', lat: 18.5204, lng: 73.8567, orders: 76, size: 22 },
-    { id: '8', name: 'Sterling Ahmedabad', city: 'Ahmedabad', state: 'Gujarat', lat: 23.0225, lng: 72.5714, orders: 68, size: 20 },
-    { id: '9', name: 'Narayana Jaipur', city: 'Jaipur', state: 'Rajasthan', lat: 26.9124, lng: 75.7873, orders: 54, size: 18 },
-    { id: '10', name: 'KGMU Lucknow', city: 'Lucknow', state: 'Uttar Pradesh', lat: 26.8467, lng: 80.9462, orders: 62, size: 19 },
-    { id: '11', name: 'Civil Surat', city: 'Surat', state: 'Gujarat', lat: 21.1702, lng: 72.8311, orders: 45, size: 16 },
-    { id: '12', name: 'Wockhardt Nagpur', city: 'Nagpur', state: 'Maharashtra', lat: 21.1458, lng: 79.0882, orders: 38, size: 15 },
-    { id: '13', name: 'Medanta Indore', city: 'Indore', state: 'Madhya Pradesh', lat: 22.7196, lng: 75.8577, orders: 42, size: 15 },
-    { id: '14', name: 'AIIMS Bhopal', city: 'Bhopal', state: 'Madhya Pradesh', lat: 23.2599, lng: 77.4126, orders: 35, size: 14 },
-    { id: '15', name: 'Care Vizag', city: 'Visakhapatnam', state: 'Andhra Pradesh', lat: 17.6868, lng: 83.2185, orders: 48, size: 17 },
-    { id: '16', name: 'IGIMS Patna', city: 'Patna', state: 'Bihar', lat: 25.5941, lng: 85.1376, orders: 32, size: 13 },
-    { id: '17', name: 'PSG Coimbatore', city: 'Coimbatore', state: 'Tamil Nadu', lat: 11.0168, lng: 76.9558, orders: 58, size: 18 },
-    { id: '18', name: 'Aster Kochi', city: 'Kochi', state: 'Kerala', lat: 9.9312, lng: 76.2673, orders: 72, size: 21 },
-  ];
-
-  const geoData = (analytics?.geographicData && analytics.geographicData.length > 0) 
-    ? analytics.geographicData 
-    : sampleGeoData;
+  // Use real geographic data from backend (no more hardcoded sample data)
+  const geoData = analytics?.geographicData || [];
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -256,11 +233,21 @@ export default function AnalyticsPage() {
             <div className="mb-3 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <FiMapPin className="h-4 w-4 text-emerald-600" />
-                <h2 className="text-sm font-semibold text-slate-900">India Order Distribution Heatmap</h2>
+                <h2 className="text-sm font-semibold text-slate-900">Distribution Network Map</h2>
               </div>
-              <span className="text-xs text-slate-500">{geoData.length} distributor locations</span>
+              <span className="text-xs text-slate-500">{geoData.length} locations</span>
             </div>
-            <HeatMap points={geoData} height={420} />
+            {geoData.length > 0 ? (
+              <HeatMap points={geoData} height={420} />
+            ) : (
+              <div className="flex h-[420px] flex-col items-center justify-center rounded-lg bg-slate-50">
+                <FiMapPin className="mb-3 h-12 w-12 text-slate-300" />
+                <p className="text-sm font-medium text-slate-600">No distribution data yet</p>
+                <p className="mt-1 text-xs text-slate-400">
+                  Add distributors and create shipments to see locations on the map
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Charts Grid */}
@@ -271,7 +258,13 @@ export default function AnalyticsPage() {
                 <h2 className="text-sm font-semibold text-slate-900">Production Trend</h2>
                 <span className="text-xs text-slate-500">Units/Day</span>
               </div>
-              <AreaChart data={productionTrend} color="emerald" height={140} />
+              {productionTrend.length > 0 ? (
+                <AreaChart data={productionTrend} color="emerald" height={140} />
+              ) : (
+                <div className="flex h-[140px] items-center justify-center text-sm text-slate-400">
+                  Create batches to see production trend
+                </div>
+              )}
             </div>
 
             {/* Shipment Trend */}
@@ -280,7 +273,13 @@ export default function AnalyticsPage() {
                 <h2 className="text-sm font-semibold text-slate-900">Shipment Trend</h2>
                 <span className="text-xs text-slate-500">Shipments/Day</span>
               </div>
-              <AreaChart data={salesTrend} color="blue" height={140} />
+              {salesTrend.length > 0 ? (
+                <AreaChart data={salesTrend} color="blue" height={140} />
+              ) : (
+                <div className="flex h-[140px] items-center justify-center text-sm text-slate-400">
+                  Create shipments to see trend
+                </div>
+              )}
             </div>
           </div>
 
@@ -310,7 +309,13 @@ export default function AnalyticsPage() {
             {/* Category Distribution */}
             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <h2 className="mb-3 text-sm font-semibold text-slate-900">Product Categories</h2>
-              <BarChart data={categoryData} color="emerald" height={140} />
+              {categoryData.length > 0 ? (
+                <BarChart data={categoryData} color="emerald" height={140} />
+              ) : (
+                <div className="flex h-[140px] items-center justify-center text-sm text-slate-400">
+                  Add products to see categories
+                </div>
+              )}
             </div>
 
             {/* Top Products */}

@@ -7,10 +7,7 @@ import { IDL } from '../idl/solana_test_project';
 import { createAuditTrail } from './audit-trail.service';
 import { sendNotification } from './notification.service';
 
-/**
- * Register batch on both blockchain and database
- * This is called at batch registration time
- */
+
 export interface BatchRegistrationData {
   // Proof fields (stored on both blockchain and database)
   batchHash: string;
@@ -41,8 +38,9 @@ async function registerBatchOnBlockchain(
   expiryDate: Date
 ): Promise<{ success: boolean; txHash?: string; pda?: string; error?: string }> {
   try {
-    const wallet = new anchor.Wallet(manufacturerWallet);
-    const provider = new anchor.AnchorProvider(connection, wallet, {
+    // Use a provider with a dummy wallet and pass the actual signer explicitly.
+    // This avoids Anchor trying to read wallet metadata (like `address`) from the provider.
+    const provider = new anchor.AnchorProvider(connection, {} as anchor.Wallet, {
       commitment: 'confirmed',
     });
     const program = new (Program as any)(IDL as any, PROGRAM_ID, provider);
@@ -67,6 +65,8 @@ async function registerBatchOnBlockchain(
         manufacturer: manufacturerWallet.publicKey,
         systemProgram: anchor.web3.SystemProgram.programId,
       })
+      // Explicitly sign with the manufacturer wallet keypair
+      .signers([manufacturerWallet])
       .rpc();
 
     return {
@@ -75,6 +75,12 @@ async function registerBatchOnBlockchain(
       pda: batchPDA.toBase58(),
     };
   } catch (error: any) {
+    // Log full error to help debug RPC / Anchor issues
+    console.error('[Blockchain] registerBatchOnBlockchain failed:', {
+      message: error?.message,
+      stack: error?.stack,
+      name: error?.name,
+    });
     return {
       success: false,
       error: error.message || 'Failed to register batch on blockchain',
@@ -97,27 +103,23 @@ export async function registerBatch(
   error?: string;
 }> {
   try {
-    // Step 1: Get manufacturer from database
+    // Step 1: Get manufacturer from database by wallet address (derived from private key)
+    const walletAddress = manufacturerWallet.publicKey.toBase58();
     const manufacturer = await prisma.manufacturer.findUnique({
-      where: { id: data.manufacturerId },
+      where: { walletAddress },
     });
 
     if (!manufacturer) {
       return {
         success: false,
-        error: 'Manufacturer not found',
+        error: `Manufacturer not found for wallet address ${walletAddress}. Please register your manufacturer account first with this wallet address.`,
       };
     }
 
-    // Verify wallet address matches
-    if (manufacturer.walletAddress !== manufacturerWallet.publicKey.toBase58()) {
-      return {
-        success: false,
-        error: 'Manufacturer wallet address mismatch',
-      };
-    }
+    // Use the manufacturer ID from the database (ignore the one passed in data)
+    const actualManufacturerId = manufacturer.id;
 
-    // Step 2: Register on blockchain first
+    // Step 2: Register on blockchain first (best-effort)
     const blockchainResult = await registerBatchOnBlockchain(
       manufacturerWallet,
       data.batchHash,
@@ -126,10 +128,11 @@ export async function registerBatch(
     );
 
     if (!blockchainResult.success) {
-      return {
-        success: false,
-        error: blockchainResult.error || 'Failed to register on blockchain',
-      };
+      // Log the blockchain failure but continue with database registration
+      console.error('[BatchRegistration] Blockchain registration failed, continuing with DB only:', {
+        batchHash: data.batchHash,
+        error: blockchainResult.error,
+      });
     }
 
     // Step 3: Store in database with proof fields + business details
@@ -142,13 +145,13 @@ export async function registerBatch(
         status: 'VALID', // Default status
         createdAt: new Date(),
 
-        // Blockchain transaction reference
+        // Blockchain transaction reference (may be undefined if blockchain failed)
         blockchainTxHash: blockchainResult.txHash,
         blockchainPda: blockchainResult.pda,
 
         // Business details (database only)
         batchNumber: data.batchNumber,
-        manufacturerId: data.manufacturerId,
+        manufacturerId: actualManufacturerId,
         medicineId: data.medicineId,
         quantity: data.quantity,
         remainingQuantity: data.quantity, // Initialize remaining quantity
@@ -208,15 +211,23 @@ export async function registerBatch(
       batchId: batch.id,
     };
 
-    if (blockchainResult.txHash) {
+    if (blockchainResult.success && blockchainResult.txHash) {
       result.blockchainTxHash = blockchainResult.txHash;
     }
-    if (blockchainResult.pda) {
+    if (blockchainResult.success && blockchainResult.pda) {
       result.blockchainPda = blockchainResult.pda;
     }
 
     return result;
   } catch (error: any) {
+    console.error('[BatchRegistration] registerBatch failed:', {
+      message: error?.message,
+      stack: error?.stack,
+      name: error?.name,
+      manufacturerId: data?.manufacturerId,
+      medicineId: data?.medicineId,
+      batchHash: data?.batchHash,
+    });
     return {
       success: false,
       error: error.message || 'Failed to register batch',

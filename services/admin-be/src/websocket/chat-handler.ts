@@ -1,8 +1,16 @@
 import { WebSocketClient } from '../types/websocket';
 import { clientManager } from './client-manager';
 import prisma from '../config/database';
-import { UserRole } from '@prisma/client';
 
+// Local UserRole type mirroring Prisma enum `UserRole`
+type UserRoleType =
+  | 'ADMIN'
+  | 'SUPERADMIN'
+  | 'MANUFACTURER'
+  | 'DISTRIBUTOR'
+  | 'PHARMACY'
+  | 'SCANNER'
+  | 'CONSUMER';
 export interface ChatMessage {
   type: 'CHAT';
   payload: {
@@ -15,7 +23,7 @@ export interface ChatMessage {
 export async function handleChatMessage(
   message: ChatMessage,
   senderUserId: string,
-  senderRole: UserRole
+  senderRole: UserRoleType
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const { payload } = message;

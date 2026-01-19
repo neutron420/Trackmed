@@ -19,6 +19,10 @@ export function NotificationBell() {
   const [isOpen, setIsOpen] = useState(false);
   const [ws, setWs] = useState<WebSocket | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const shouldReconnectRef = useRef(true);
+  const isConnectingRef = useRef(false);
+  const connectionErrorRef = useRef(false);
 
   // Fetch notifications from API
   const fetchNotifications = async () => {
@@ -136,13 +140,20 @@ export function NotificationBell() {
   // Initialize WebSocket connection
   useEffect(() => {
     const token = localStorage.getItem("token");
-    if (!token) return;
+    if (!token) {
+      console.log("NotificationBell: No token found, skipping WebSocket connection");
+      return;
+    }
 
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
     const wsUrl = apiUrl.replace("http://", "ws://").replace("https://", "wss://");
-    const socket = new WebSocket(`${wsUrl}/ws`);
+    const fullWsUrl = `${wsUrl}/ws`;
+    
+    console.log(`NotificationBell: Attempting WebSocket connection to ${fullWsUrl}`);
+    const socket = new WebSocket(fullWsUrl);
 
     socket.onopen = () => {
+      console.log("NotificationBell: WebSocket connection opened");
       // Authenticate with token
       socket.send(
         JSON.stringify({
@@ -164,36 +175,52 @@ export function NotificationBell() {
           }
         } else if (message.type === "AUTH" && message.payload?.success) {
           // Connected successfully
-          console.log("WebSocket connected as manufacturer");
+          console.log("NotificationBell: WebSocket authenticated as manufacturer");
+        } else if (message.type === "ERROR") {
+          console.error("NotificationBell: WebSocket error message:", message.error);
         }
       } catch (error) {
-        console.error("Failed to parse WebSocket message:", error);
+        console.error("NotificationBell: Failed to parse WebSocket message:", error);
       }
     };
 
     socket.onerror = (error) => {
-      console.error("WebSocket error:", error);
+      // WebSocket error events don't provide detailed error info in the error object
+      // The actual error is usually indicated by the connection state
+      console.error(`NotificationBell: WebSocket error occurred. Connection state: ${socket.readyState} (0=CONNECTING, 1=OPEN, 2=CLOSING, 3=CLOSED), URL: ${fullWsUrl}`);
+      // Check if backend is reachable
+      if (socket.readyState === WebSocket.CLOSED) {
+        console.warn("NotificationBell: WebSocket connection failed. Make sure the backend server is running on", apiUrl);
+      }
     };
 
-    socket.onclose = () => {
-      console.log("WebSocket disconnected");
+    socket.onclose = (event) => {
+      const { code, reason, wasClean } = event;
+      console.log(`NotificationBell: WebSocket disconnected. Code: ${code}, Reason: ${reason || 'none'}, Clean: ${wasClean}`);
       setWs(null);
-      // Attempt to reconnect after 5 seconds if token still exists
-      setTimeout(() => {
-        const currentToken = localStorage.getItem("token");
-        if (currentToken) {
-          // Reconnect will be handled by useEffect when ws becomes null
-          console.log("Attempting to reconnect WebSocket...");
-        }
-      }, 5000);
+      
+      // Only attempt to reconnect if it wasn't a clean close and token still exists
+      // Don't reconnect on authentication failures (code 1008)
+      if (code !== 1008 && code !== 1000) {
+        setTimeout(() => {
+          const currentToken = localStorage.getItem("token");
+          if (currentToken) {
+            console.log("NotificationBell: Attempting to reconnect WebSocket...");
+            // Trigger reconnection by updating state (this will cause useEffect to re-run)
+            setWs(null);
+          }
+        }, 5000);
+      }
     };
 
     setWs(socket);
 
     return () => {
-      socket.close();
+      if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+        socket.close(1000, "Component unmounting");
+      }
     };
-  }, []);
+  }, [ws]); // Re-run when ws becomes null (for reconnection)
 
   // Fetch notifications on mount and when WebSocket reconnects
   useEffect(() => {

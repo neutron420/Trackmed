@@ -63,8 +63,9 @@ app.use(cors({
 app.use(generalLimiter);
 
 // Security: Request body size limit (prevent DoS)
-app.use(express.json({ limit: '10kb' }));
-app.use(express.urlencoded({ extended: true, limit: '10kb' }));
+// Increased to 5MB to support larger JSON payloads while still protecting the server
+app.use(express.json({ limit: '5mb' }));
+app.use(express.urlencoded({ extended: true, limit: '5mb' }));
 
 // Security: Input sanitization and logging
 app.use(sanitizeInput);

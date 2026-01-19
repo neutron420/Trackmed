@@ -2,6 +2,7 @@ import { Router } from 'express';
 import type { Request, Response } from 'express';
 import multer from 'multer';
 import { uploadImageToR2, validateImageFile } from '../services/r2-upload.service';
+import { verifyToken } from '../middleware/auth.middleware';
 
 const router = Router();
 
@@ -17,8 +18,9 @@ const upload = multer({
 /**
  * POST /api/upload/image
  * Upload image to Cloudflare R2
+ * Requires authentication
  */
-router.post('/image', upload.single('image'), async (req: Request, res: Response) => {
+router.post('/image', verifyToken, upload.single('image'), async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
     if (!user) {

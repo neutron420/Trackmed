@@ -70,15 +70,46 @@ export function SimpleDonutChart({ data, size = 120 }: DonutChartProps) {
     return [x, y];
   };
 
+  // Filter out zero values for rendering, but keep all for legend
+  const nonZeroData = data.filter(d => d.value > 0);
+
+  // If no data or all zeros, show empty state
+  if (total === 0) {
+    return (
+      <div className="flex items-center justify-center gap-5">
+        <svg width={size} height={size} viewBox="-1 -1 2 2" className="flex-shrink-0">
+          <circle cx="0" cy="0" r="1" fill="#e2e8f0" />
+          <circle cx="0" cy="0" r="0.65" fill="white" />
+        </svg>
+        <div className="space-y-1.5">
+          {data.map((item, index) => (
+            <div key={index} className="flex items-center gap-2 text-xs">
+              <div className="h-2.5 w-2.5 flex-shrink-0 rounded-full" style={{ backgroundColor: item.color }} />
+              <span className="text-slate-500">{item.label}</span>
+              <span className="font-semibold text-slate-400">0</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex items-center justify-center gap-5">
       <svg width={size} height={size} viewBox="-1 -1 2 2" className="-rotate-90 flex-shrink-0">
-        {data.map((item, index) => {
+        {nonZeroData.map((item, index) => {
           const [startX, startY] = getCoordinatesForPercent(cumulativePercent);
           const percent = item.value / total;
           cumulativePercent += percent;
           const [endX, endY] = getCoordinatesForPercent(cumulativePercent);
           const largeArcFlag = percent > 0.5 ? 1 : 0;
+
+          // Handle case where single item is 100%
+          if (percent >= 0.9999) {
+            return (
+              <circle key={index} cx="0" cy="0" r="1" fill={item.color} />
+            );
+          }
 
           return (
             <path
@@ -161,7 +192,16 @@ export function AreaChart({ data, color = "emerald", height = 140 }: AreaChartDa
 }
 
 export function BarChart({ data, color = "emerald", height = 140 }: AreaChartDataProps) {
-  const max = Math.max(...data.map((d) => d.value));
+  // Handle empty data
+  if (!data || data.length === 0) {
+    return (
+      <div className="flex items-center justify-center" style={{ minHeight: height }}>
+        <p className="text-sm text-slate-400">No data available</p>
+      </div>
+    );
+  }
+
+  const max = Math.max(...data.map((d) => d.value), 1); // Ensure at least 1
   const colors = colorMap[color];
 
   return (
@@ -170,12 +210,12 @@ export function BarChart({ data, color = "emerald", height = 140 }: AreaChartDat
         <div key={index} className="space-y-1">
           <div className="flex items-center justify-between text-xs">
             <span className="text-slate-600">{item.label}</span>
-            <span className="font-medium text-slate-900">{item.value}%</span>
+            <span className="font-medium text-slate-900">{item.value}</span>
           </div>
           <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
             <div
               className="h-full rounded-full transition-all duration-500"
-              style={{ width: `${(item.value / max) * 100}%`, backgroundColor: colors.main }}
+              style={{ width: `${max > 0 ? (item.value / max) * 100 : 0}%`, backgroundColor: colors.main }}
             />
           </div>
         </div>
@@ -191,8 +231,17 @@ interface OldAreaChartProps {
 }
 
 export function SimpleAreaChart({ data, labels, height = 160 }: OldAreaChartProps) {
-  const max = Math.max(...data);
-  const min = Math.min(...data) * 0.9; // Add some padding at bottom
+  // Handle empty data
+  if (!data || data.length === 0) {
+    return (
+      <div className="flex items-center justify-center" style={{ height }}>
+        <p className="text-sm text-slate-400">No data available</p>
+      </div>
+    );
+  }
+
+  const max = Math.max(...data, 1); // Ensure at least 1 to avoid division issues
+  const min = Math.min(...data) * 0.9;
   const range = max - min || 1;
   const padding = { top: 20, bottom: 30, left: 0, right: 0 };
   const chartWidth = 600;
@@ -200,12 +249,15 @@ export function SimpleAreaChart({ data, labels, height = 160 }: OldAreaChartProp
   const graphHeight = chartHeight - padding.top - padding.bottom;
   const graphWidth = chartWidth - padding.left - padding.right;
 
-  const getX = (index: number) => padding.left + (index / (data.length - 1)) * graphWidth;
+  const getX = (index: number) => padding.left + (index / Math.max(data.length - 1, 1)) * graphWidth;
   const getY = (value: number) => padding.top + graphHeight - ((value - min) / range) * graphHeight;
 
   const points = data.map((value, index) => `${getX(index)},${getY(value)}`);
   const areaPoints = `${padding.left},${chartHeight - padding.bottom} ${points.join(" ")} ${chartWidth - padding.right},${chartHeight - padding.bottom}`;
   const linePoints = points.join(" ");
+
+  // Check if all values are zero
+  const allZero = data.every(v => v === 0);
 
   return (
     <div className="relative w-full">
@@ -238,7 +290,7 @@ export function SimpleAreaChart({ data, labels, height = 160 }: OldAreaChartProp
         <polyline
           points={linePoints}
           fill="none"
-          stroke="#0ea371"
+          stroke={allZero ? "#cbd5e1" : "#0ea371"}
           strokeWidth="2.5"
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -247,8 +299,8 @@ export function SimpleAreaChart({ data, labels, height = 160 }: OldAreaChartProp
         {/* Data points */}
         {data.map((value, index) => (
           <g key={index}>
-            <circle cx={getX(index)} cy={getY(value)} r="6" fill="#0ea371" opacity="0.15" />
-            <circle cx={getX(index)} cy={getY(value)} r="4" fill="white" stroke="#0ea371" strokeWidth="2" />
+            <circle cx={getX(index)} cy={getY(value)} r="6" fill={allZero ? "#cbd5e1" : "#0ea371"} opacity="0.15" />
+            <circle cx={getX(index)} cy={getY(value)} r="4" fill="white" stroke={allZero ? "#cbd5e1" : "#0ea371"} strokeWidth="2" />
           </g>
         ))}
       </svg>

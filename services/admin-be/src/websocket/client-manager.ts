@@ -1,7 +1,15 @@
 import { WebSocketClient } from '../types/websocket';
 import WebSocket from 'ws';
-import { UserRole } from '@prisma/client';
 
+// Local UserRole type mirroring Prisma enum `UserRole`
+type UserRoleType =
+  | 'ADMIN'
+  | 'SUPERADMIN'
+  | 'MANUFACTURER'
+  | 'DISTRIBUTOR'
+  | 'PHARMACY'
+  | 'SCANNER'
+  | 'CONSUMER';
 class ClientManager {
   private clients: Map<string, WebSocketClient> = new Map();
   private superAdminClients: Set<string> = new Set();
@@ -11,9 +19,9 @@ class ClientManager {
     const clientId = this.generateClientId(client.userId, client.socket);
     this.clients.set(clientId, client);
 
-    if (client.role === UserRole.ADMIN) {
+    if (client.role === 'ADMIN' || client.role === 'SUPERADMIN') {
       this.superAdminClients.add(clientId);
-    } else if (client.role === UserRole.MANUFACTURER) {
+    } else if (client.role === 'MANUFACTURER') {
       this.manufacturerClients.add(clientId);
     }
   }

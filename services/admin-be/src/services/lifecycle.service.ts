@@ -1,14 +1,24 @@
 import prisma from '../config/database';
 import { createAuditTrail } from './audit-trail.service';
-import { LifecycleStatus } from '@prisma/client';
 import { sendNotification } from './notification.service';
+
+// Local TypeScript type mirroring Prisma enum `LifecycleStatus`
+// This avoids direct coupling to @prisma/client enum exports.
+type LifecycleStatusType =
+  | 'IN_PRODUCTION'
+  | 'IN_TRANSIT'
+  | 'AT_DISTRIBUTOR'
+  | 'AT_PHARMACY'
+  | 'SOLD'
+  | 'EXPIRED'
+  | 'RECALLED';
 
 /**
  * Update batch lifecycle status
  */
 export async function updateLifecycleStatus(
   batchId: string,
-  newStatus: LifecycleStatus,
+  newStatus: LifecycleStatusType,
   distributorId?: string,
   pharmacyId?: string,
   performedBy: string = 'system',
@@ -34,10 +44,10 @@ export async function updateLifecycleStatus(
       };
     }
 
-    const oldStatus = batch.lifecycleStatus;
+    const oldStatus = batch.lifecycleStatus as LifecycleStatusType;
 
     // Validate status transition
-    const validTransitions: Record<LifecycleStatus, LifecycleStatus[]> = {
+    const validTransitions: Record<LifecycleStatusType, LifecycleStatusType[]> = {
       IN_PRODUCTION: ['IN_TRANSIT'],
       IN_TRANSIT: ['AT_DISTRIBUTOR', 'AT_PHARMACY'],
       AT_DISTRIBUTOR: ['IN_TRANSIT', 'AT_PHARMACY'],

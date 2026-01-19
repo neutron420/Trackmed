@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Sidebar } from "../../components/sidebar";
 import { StatCard } from "../../components/stat-card";
 import { ChartCard, SimpleBarChart, SimpleDonutChart, SimpleAreaChart } from "../../components/charts";
@@ -10,6 +10,8 @@ import { ActivityFeed } from "../../components/activity-feed";
 import { QuickAction, ProgressCard, AlertCard } from "../../components/cards";
 import { DashboardHeader } from "../../components/DashboardHeader";
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+
 interface User {
   id: string;
   email: string;
@@ -17,46 +19,121 @@ interface User {
   role: string;
 }
 
-// Demo data
-const recentBatches = [
-  { id: "BTH-2026-001", product: "Paracetamol 500mg", quantity: 10000, manufactured: "Jan 15, 2026", expiry: "Jan 15, 2028", status: "active" as const },
-  { id: "BTH-2026-002", product: "Amoxicillin 250mg", quantity: 5000, manufactured: "Jan 14, 2026", expiry: "Jan 14, 2027", status: "shipped" as const },
-  { id: "BTH-2026-003", product: "Ibuprofen 400mg", quantity: 8500, manufactured: "Jan 12, 2026", expiry: "Jan 12, 2028", status: "active" as const },
-  { id: "BTH-2026-004", product: "Vitamin D3 1000IU", quantity: 15000, manufactured: "Jan 10, 2026", expiry: "Jan 10, 2028", status: "delivered" as const },
-  { id: "BTH-2026-005", product: "Metformin 500mg", quantity: 12000, manufactured: "Jan 8, 2026", expiry: "Jan 8, 2028", status: "pending" as const },
-];
+interface DashboardData {
+  summary: {
+    totalBatches: number;
+    totalUnits: number;
+    totalScans: number;
+    verifiedScans: number;
+    counterfeitScans: number;
+    verificationRate: string | number;
+    totalShipments: number;
+    deliveredShipments: number;
+    pendingShipments: number;
+  };
+  batchStats: {
+    totalBatches: number;
+    validBatches: number;
+    recalledBatches: number;
+    expiredBatches: number;
+    lifecycle: {
+      inProduction: number;
+      inTransit: number;
+      atDistributor: number;
+      atPharmacy: number;
+      sold: number;
+    };
+  };
+  productionTrend: Array<{ label: string; value: number; date: string }>;
+  topProducts: Array<{
+    name: string;
+    units: number;
+    batchCount: number;
+    rank: number;
+    growth: string;
+  }>;
+}
 
-const productionData = [
-  { label: "Paracetamol", value: 45000, color: "#0ea371" },
-  { label: "Amoxicillin", value: 32000, color: "#3b82f6" },
-  { label: "Ibuprofen", value: 28000, color: "#8b5cf6" },
-  { label: "Vitamin D3", value: 22000, color: "#f59e0b" },
-  { label: "Metformin", value: 18000, color: "#ef4444" },
-];
+interface BatchItem {
+  id: string;
+  batchNumber: string;
+  medicine?: { name: string; strength: string };
+  quantity: number;
+  manufacturingDate: string;
+  expiryDate: string;
+  status: string;
+  lifecycleStatus: string;
+}
 
-const statusDistribution = [
-  { label: "Active", value: 156, color: "#0ea371" },
-  { label: "In Transit", value: 42, color: "#3b82f6" },
-  { label: "Delivered", value: 89, color: "#8b5cf6" },
-  { label: "Pending", value: 23, color: "#f59e0b" },
-];
-
-const monthlyProduction = [4200, 5100, 4800, 6200, 5800, 7100, 6500, 7800, 8200, 7600, 8900, 9200];
-const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-const activities = [
-  { id: "1", type: "batch" as const, title: "New batch created", description: "BTH-2026-006 - Aspirin 325mg", time: "2m ago" },
-  { id: "2", type: "shipment" as const, title: "Shipment dispatched", description: "SHP-2026-089 to MedPharm Distributors", time: "15m ago" },
-  { id: "3", type: "qr" as const, title: "QR codes generated", description: "500 codes for BTH-2026-005", time: "1h ago" },
-  { id: "4", type: "alert" as const, title: "Low inventory alert", description: "Amoxicillin raw materials below threshold", time: "2h ago" },
-  { id: "5", type: "user" as const, title: "New user added", description: "production@trackmed.com joined", time: "3h ago" },
-];
+interface Activity {
+  id: string;
+  type: "batch" | "shipment" | "qr" | "alert" | "user";
+  title: string;
+  description: string;
+  time: string;
+}
 
 export default function DashboardPage() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+  const [recentBatches, setRecentBatches] = useState<BatchItem[]>([]);
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [qrCount, setQrCount] = useState(0);
+
+  const fetchDashboardData = useCallback(async () => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    try {
+      // Fetch analytics dashboard data
+      const analyticsRes = await fetch(`${API_BASE}/api/analytics/dashboard?days=30`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const analyticsData = await analyticsRes.json();
+      if (analyticsData.success) {
+        setDashboardData(analyticsData.data);
+      }
+
+      // Fetch recent batches
+      const batchesRes = await fetch(`${API_BASE}/api/batch?limit=5`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const batchesData = await batchesRes.json();
+      if (batchesData.success) {
+        setRecentBatches(batchesData.data || []);
+      }
+
+      // Fetch recent audit trail for activities
+      const auditRes = await fetch(`${API_BASE}/api/audit-trail?limit=5`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const auditData = await auditRes.json();
+      if (auditData.success && auditData.data) {
+        const mappedActivities = auditData.data.map((audit: any) => ({
+          id: audit.id,
+          type: mapAuditToActivityType(audit.entityType, audit.action),
+          title: `${audit.action.replace(/_/g, " ")} ${audit.entityType}`,
+          description: `${audit.entityType} ${audit.entityId?.slice(0, 8) || ""}...`,
+          time: formatTimeAgo(audit.createdAt),
+        }));
+        setActivities(mappedActivities);
+      }
+
+      // Fetch QR code count
+      const qrRes = await fetch(`${API_BASE}/api/qr-code?limit=1`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const qrData = await qrRes.json();
+      if (qrData.success) {
+        setQrCount(qrData.pagination?.total || 0);
+      }
+    } catch (error) {
+      console.error("Failed to fetch dashboard data:", error);
+    }
+  }, []);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -69,11 +146,11 @@ export default function DashboardPage() {
 
     try {
       setUser(JSON.parse(storedUser));
+      fetchDashboardData().finally(() => setIsLoading(false));
     } catch {
       router.push("/login");
     }
-    setIsLoading(false);
-  }, [router]);
+  }, [router, fetchDashboardData]);
 
   const handleLogout = () => {
     localStorage.removeItem("token");
@@ -84,10 +161,43 @@ export default function DashboardPage() {
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <p className="text-lg text-slate-600">Loading...</p>
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent" />
       </div>
     );
   }
+
+  // Extract data with fallbacks
+  const summary = dashboardData?.summary;
+  const batchStats = dashboardData?.batchStats;
+  const lifecycle = batchStats?.lifecycle;
+  const productionTrend = dashboardData?.productionTrend || [];
+  const topProducts = dashboardData?.topProducts || [];
+
+  // Build status distribution from real data
+  const statusDistribution = lifecycle
+    ? [
+        { label: "In Production", value: lifecycle.inProduction, color: "#0ea371" },
+        { label: "In Transit", value: lifecycle.inTransit, color: "#3b82f6" },
+        { label: "At Distributor", value: lifecycle.atDistributor, color: "#8b5cf6" },
+        { label: "At Pharmacy", value: lifecycle.atPharmacy, color: "#f59e0b" },
+        { label: "Sold", value: lifecycle.sold, color: "#ef4444" },
+      ]
+    : [];
+
+  // Build production chart data from trend
+  const monthlyLabels = productionTrend.map((p) => p.label);
+  const monthlyData = productionTrend.map((p) => p.value);
+
+  // Build top products chart data
+  const productChartData = topProducts.map((p, i) => ({
+    label: p.name.length > 15 ? p.name.slice(0, 15) + "..." : p.name,
+    value: p.units,
+    color: ["#0ea371", "#3b82f6", "#8b5cf6", "#f59e0b", "#ef4444"][i % 5],
+  }));
+
+  // Calculate target progress (total units this month vs target)
+  const currentMonthUnits = monthlyData[monthlyData.length - 1] || 0;
+  const targetUnits = Math.max(currentMonthUnits * 1.2, 10000); // Target is 20% more or 10k minimum
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -108,10 +218,14 @@ export default function DashboardPage() {
           title="Dashboard"
           subtitle={`Welcome back, ${user?.name || "Manufacturer"}`}
           actions={
-            <button className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50">
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            <button
+              onClick={() => fetchDashboardData()}
+              className="flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs text-slate-600 hover:bg-slate-50"
+            >
+              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
+              Refresh
             </button>
           }
         />
@@ -121,30 +235,30 @@ export default function DashboardPage() {
           <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard
               title="Total Batches"
-              value="248"
-              change="+12%"
+              value={summary?.totalBatches?.toLocaleString() || "0"}
+              change={batchStats?.validBatches ? `${batchStats.validBatches} active` : "0 active"}
               changeType="positive"
               icon={<svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>}
             />
             <StatCard
-              title="Active Products"
-              value="156"
-              change="+8"
+              title="Total Units"
+              value={summary?.totalUnits?.toLocaleString() || "0"}
+              change={`${summary?.verifiedScans || 0} scanned`}
               changeType="positive"
               icon={<svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>}
             />
             <StatCard
               title="QR Generated"
-              value="12,847"
-              change="+523"
+              value={qrCount.toLocaleString()}
+              change={`${summary?.totalScans || 0} scans`}
               changeType="positive"
               icon={<svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" /></svg>}
             />
             <StatCard
               title="Pending Shipments"
-              value="23"
-              change="5 urgent"
-              changeType="negative"
+              value={summary?.pendingShipments?.toString() || "0"}
+              change={`${summary?.deliveredShipments || 0} delivered`}
+              changeType={summary?.pendingShipments && summary.pendingShipments > 10 ? "negative" : "positive"}
               icon={<svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0" /></svg>}
             />
           </div>
@@ -152,12 +266,28 @@ export default function DashboardPage() {
           {/* Alert + Quick Actions Row */}
           <div className="mb-5 grid gap-4 lg:grid-cols-3">
             <div className="lg:col-span-1">
-              <AlertCard
-                type="warning"
-                title="Low Inventory Alert"
-                message="Amoxicillin raw materials running low. Stock will last ~5 days."
-                action={{ label: "View Inventory", onClick: () => router.push("/dashboard/inventory") }}
-              />
+              {batchStats?.expiredBatches && batchStats.expiredBatches > 0 ? (
+                <AlertCard
+                  type="warning"
+                  title="Expired Batches Alert"
+                  message={`${batchStats.expiredBatches} batch(es) have expired. Review and take action.`}
+                  action={{ label: "View Batches", onClick: () => router.push("/dashboard/batches") }}
+                />
+              ) : batchStats?.recalledBatches && batchStats.recalledBatches > 0 ? (
+                <AlertCard
+                  type="error"
+                  title="Recalled Batches"
+                  message={`${batchStats.recalledBatches} batch(es) have been recalled.`}
+                  action={{ label: "View Recalled", onClick: () => router.push("/dashboard/batches") }}
+                />
+              ) : (
+                <AlertCard
+                  type="success"
+                  title="All Systems Normal"
+                  message="No alerts at the moment. All batches are valid and operational."
+                  action={{ label: "View Analytics", onClick: () => router.push("/dashboard/analytics") }}
+                />
+              )}
             </div>
             <div className="lg:col-span-2">
               <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
@@ -195,19 +325,33 @@ export default function DashboardPage() {
             <div className="lg:col-span-2">
               <ChartCard
                 title="Production Overview"
-                subtitle="Monthly production units (2026)"
+                subtitle={productionTrend.length > 0 ? "Last 7 days production" : "No production data yet"}
                 action={
-                  <select className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600">
-                    <option>This Year</option>
-                    <option>Last Year</option>
-                  </select>
+                  <button
+                    onClick={() => router.push("/dashboard/analytics")}
+                    className="text-xs text-emerald-600 hover:text-emerald-700"
+                  >
+                    View Details →
+                  </button>
                 }
               >
-                <SimpleAreaChart data={monthlyProduction} labels={months} height={160} />
+                {monthlyData.length > 0 ? (
+                  <SimpleAreaChart data={monthlyData} labels={monthlyLabels} height={160} />
+                ) : (
+                  <div className="flex h-40 items-center justify-center text-sm text-slate-400">
+                    Create batches to see production data
+                  </div>
+                )}
               </ChartCard>
             </div>
-            <ChartCard title="Batch Status" subtitle="Distribution by status">
-              <SimpleDonutChart data={statusDistribution} size={100} />
+            <ChartCard title="Batch Lifecycle" subtitle="Distribution by status">
+              {statusDistribution.some((s) => s.value > 0) ? (
+                <SimpleDonutChart data={statusDistribution} size={100} />
+              ) : (
+                <div className="flex h-32 items-center justify-center text-sm text-slate-400">
+                  No batch data yet
+                </div>
+              )}
             </ChartCard>
           </div>
 
@@ -228,15 +372,58 @@ export default function DashboardPage() {
                     View all →
                   </button>
                 </div>
-                <DataTable
-                  columns={[
-                    { key: "id", label: "Batch ID", render: (item) => <span className="font-semibold text-emerald-700">{item.id}</span> },
-                    { key: "product", label: "Product", render: (item) => <span className="text-slate-800">{item.product}</span> },
-                    { key: "quantity", label: "Quantity", render: (item) => <span className="text-slate-500">{item.quantity.toLocaleString()} units</span> },
-                    { key: "status", label: "Status", render: (item) => <StatusBadge status={item.status} /> },
-                  ]}
-                  data={recentBatches}
-                />
+                {recentBatches.length > 0 ? (
+                  <DataTable
+                    columns={[
+                      { 
+                        key: "batchNumber", 
+                        label: "Batch ID", 
+                        render: (item) => (
+                          <span className="font-semibold text-emerald-700">
+                            {item.batchNumber || item.id.slice(0, 12)}
+                          </span>
+                        ) 
+                      },
+                      { 
+                        key: "product", 
+                        label: "Product", 
+                        render: (item) => (
+                          <span className="text-slate-800">
+                            {item.medicine?.name || "Unknown"} {item.medicine?.strength || ""}
+                          </span>
+                        ) 
+                      },
+                      { 
+                        key: "quantity", 
+                        label: "Quantity", 
+                        render: (item) => (
+                          <span className="text-slate-500">{(item.quantity || 0).toLocaleString()} units</span>
+                        ) 
+                      },
+                      { 
+                        key: "status", 
+                        label: "Status", 
+                        render: (item) => (
+                          <StatusBadge status={mapLifecycleToStatus(item.lifecycleStatus || item.status)} />
+                        ) 
+                      },
+                    ]}
+                    data={recentBatches}
+                  />
+                ) : (
+                  <div className="py-12 text-center">
+                    <svg className="mx-auto h-10 w-10 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                    </svg>
+                    <p className="mt-2 text-sm text-slate-500">No batches yet</p>
+                    <button
+                      onClick={() => router.push("/dashboard/batches/new")}
+                      className="mt-3 text-sm font-medium text-emerald-600 hover:text-emerald-700"
+                    >
+                      Create your first batch →
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -244,13 +431,30 @@ export default function DashboardPage() {
             <div className="space-y-4">
               <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                 <h3 className="mb-3 text-sm font-semibold text-slate-900">Recent Activity</h3>
-                <ActivityFeed activities={activities} />
+                {activities.length > 0 ? (
+                  <ActivityFeed activities={activities} />
+                ) : (
+                  <div className="py-6 text-center text-sm text-slate-400">
+                    No recent activity
+                  </div>
+                )}
               </div>
 
-              <ProgressCard title="Monthly Target" current={8200} target={10000} unit=" units" />
+              <ProgressCard 
+                title="Monthly Production" 
+                current={currentMonthUnits} 
+                target={targetUnits} 
+                unit=" units" 
+              />
               
               <ChartCard title="Top Products" subtitle="By production volume">
-                <SimpleBarChart data={productionData} />
+                {productChartData.length > 0 ? (
+                  <SimpleBarChart data={productChartData} />
+                ) : (
+                  <div className="flex h-32 items-center justify-center text-sm text-slate-400">
+                    Add products to see data
+                  </div>
+                )}
               </ChartCard>
             </div>
           </div>
@@ -258,4 +462,49 @@ export default function DashboardPage() {
       </main>
     </div>
   );
+}
+
+// Helper functions
+function mapAuditToActivityType(entityType: string, action: string): "batch" | "shipment" | "qr" | "alert" | "user" {
+  if (entityType === "BATCH") return "batch";
+  if (entityType === "SHIPMENT") return "shipment";
+  if (entityType === "QR_CODE" || entityType === "QRCODE") return "qr";
+  if (entityType === "FRAUD_ALERT" || action.includes("ALERT")) return "alert";
+  if (entityType === "USER") return "user";
+  return "batch";
+}
+
+function mapLifecycleToStatus(status: string): "active" | "shipped" | "delivered" | "pending" | "recalled" {
+  switch (status?.toUpperCase()) {
+    case "IN_PRODUCTION":
+      return "active";
+    case "IN_TRANSIT":
+      return "shipped";
+    case "AT_DISTRIBUTOR":
+    case "AT_PHARMACY":
+      return "delivered";
+    case "SOLD":
+      return "delivered";
+    case "RECALLED":
+      return "recalled";
+    case "VALID":
+      return "active";
+    default:
+      return "pending";
+  }
+}
+
+function formatTimeAgo(dateString: string): string {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 1) return "Just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return date.toLocaleDateString();
 }
