@@ -125,6 +125,8 @@ import auditTrailRoutes from './routes/audit-trail.routes';
 import shipmentRoutes from './routes/shipment.routes';
 import reportRoutes from './routes/report.routes';
 import chatRoutes from './routes/chat.routes';
+import notificationRoutes from './routes/notification.routes';
+import uploadRoutes from './routes/upload.routes';
 
 app.use('/api/auth', authRoutes);
 app.use('/api/batch', batchRoutes);
@@ -144,6 +146,8 @@ app.use('/api/audit-trail', auditTrailRoutes);
 app.use('/api/shipment', shipmentRoutes);
 app.use('/api/report', reportRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/notification', notificationRoutes);
+app.use('/api/upload', uploadRoutes);
 
 // Error handling middleware
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {

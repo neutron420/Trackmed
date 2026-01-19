@@ -91,16 +91,19 @@ export async function updateLifecycleStatus(
       metadata: { distributorId, pharmacyId },
     });
 
-    // Send notification
+    // Send notification to admins about lifecycle change
     await sendNotification({
       type: 'LIFECYCLE_CHANGE',
       batchId,
-      message: `Batch ${batch.batchNumber} status changed from ${oldStatus} to ${newStatus}`,
+      message: `Manufacturer ${batch.manufacturer.name} changed batch ${batch.batchNumber} lifecycle from ${oldStatus} to ${newStatus}`,
       severity: 'INFO',
+      targetRoles: ['ADMIN', 'SUPERADMIN'],
       metadata: {
         batchNumber: batch.batchNumber,
         oldStatus,
         newStatus,
+        manufacturerName: batch.manufacturer.name,
+        manufacturerId: batch.manufacturerId,
       },
     });
 

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import type { Request, Response } from 'express';
 import prisma from '../config/database';
 import { createAuditTrail } from '../services/audit-trail.service';
+import { sendManufacturerVerification, sendManufacturerUpdate } from '../services/notification.service';
 
 const router = Router();
 
@@ -210,6 +211,8 @@ router.patch('/:id', async (req: Request, res: Response) => {
     // Create audit trail
     const userId = (req as any).user?.userId || 'system';
     const userRole = (req as any).user?.role || 'ADMIN';
+    const adminName = (req as any).user?.name || 'System';
+    
     await createAuditTrail({
       entityType: 'MANUFACTURER',
       entityId: id!,
@@ -218,6 +221,27 @@ router.patch('/:id', async (req: Request, res: Response) => {
       performedByRole: userRole,
       metadata: { updateData, previousData: existing },
     });
+
+    // Send notification to manufacturer user if email exists
+    if (manufacturer.email) {
+      try {
+        const manufacturerUser = await prisma.user.findUnique({
+          where: { email: manufacturer.email },
+        });
+        
+        if (manufacturerUser) {
+          const updateDetails = Object.keys(updateData).join(', ');
+          await sendManufacturerUpdate(
+            manufacturerUser.id,
+            manufacturer.name,
+            `Updated fields: ${updateDetails}`,
+            adminName
+          );
+        }
+      } catch (notifyErr) {
+        console.error('Failed to send manufacturer update notification:', notifyErr);
+      }
+    }
 
     res.json({
       success: true,
@@ -251,6 +275,8 @@ router.patch('/:id/verify', async (req: Request, res: Response) => {
     // Create audit trail
     const userId = (req as any).user?.userId || 'system';
     const userRole = (req as any).user?.role || 'ADMIN';
+    const adminName = (req as any).user?.name || 'System';
+    
     await createAuditTrail({
       entityType: 'MANUFACTURER',
       entityId: id as string,
@@ -261,6 +287,26 @@ router.patch('/:id/verify', async (req: Request, res: Response) => {
       performedBy: userId,
       performedByRole: userRole,
     });
+
+    // Send notification to manufacturer user if email exists
+    if (manufacturer.email) {
+      try {
+        const manufacturerUser = await prisma.user.findUnique({
+          where: { email: manufacturer.email },
+        });
+        
+        if (manufacturerUser) {
+          await sendManufacturerVerification(
+            manufacturerUser.id,
+            manufacturer.name,
+            isVerified,
+            adminName
+          );
+        }
+      } catch (notifyErr) {
+        console.error('Failed to send manufacturer verification notification:', notifyErr);
+      }
+    }
 
     res.json({
       success: true,

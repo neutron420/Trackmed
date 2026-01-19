@@ -3,7 +3,7 @@ import type { Request, Response } from 'express';
 import { verifyAndGetBatch, verifyQRCode, logScan } from '../services/batch.service';
 import { registerBatch, updateBatchStatus } from '../services/batch-registration.service';
 import { createAuditTrail } from '../services/audit-trail.service';
-import { sendBatchRecall } from '../services/notification.service';
+import { sendBatchRecall, sendBatchStatusChanged, sendNotification } from '../services/notification.service';
 import prisma from '../config/database';
 import { Keypair } from '@solana/web3.js';
 import bs58 from 'bs58';
@@ -29,6 +29,7 @@ router.post('/register', async (req: Request, res: Response) => {
       gstNumber,
       warehouseLocation,
       warehouseAddress,
+      imageUrl,
       manufacturerWalletPrivateKey, // Base58 encoded private key
     } = req.body;
 
@@ -59,6 +60,7 @@ router.post('/register', async (req: Request, res: Response) => {
       gstNumber,
       warehouseLocation,
       warehouseAddress,
+      imageUrl,
     });
 
     if (!result.success) {
@@ -144,6 +146,15 @@ router.patch('/:batchHash/status', async (req: Request, res: Response) => {
     // Get batch for audit trail and notification
     const batch = await prisma.batch.findUnique({
       where: { batchHash },
+      include: {
+        manufacturer: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
     });
 
     // Create audit trail
@@ -161,9 +172,47 @@ router.patch('/:batchHash/status', async (req: Request, res: Response) => {
         performedByRole: userRole,
       });
 
-      // Send notification if recalled
-      if (newStatus === 'RECALLED' && batch.batchNumber) {
-        await sendBatchRecall(batch.id, batch.batchNumber);
+      // Send notification for any status change (admins need to know all manufacturer actions)
+      if (batch.batchNumber) {
+        // Critical notification for recalls (notifies admins)
+        if (newStatus === 'RECALLED') {
+          await sendBatchRecall(batch.id, batch.batchNumber);
+        }
+        
+        // General notification for all status changes (notifies admins)
+        await sendBatchStatusChanged(
+          batch.id,
+          batch.batchNumber,
+          batch.status,
+          newStatus,
+          batch.manufacturer.name
+        );
+
+        // Also notify the manufacturer user about their batch status change
+        if (batch.manufacturer.email) {
+          try {
+            const manufacturerUser = await prisma.user.findUnique({
+              where: { email: batch.manufacturer.email },
+            });
+            
+            if (manufacturerUser) {
+              await sendNotification({
+                type: 'BATCH_STATUS_CHANGED',
+                batchId: batch.id,
+                message: `Your batch ${batch.batchNumber} status has been changed from ${batch.status} to ${newStatus}`,
+                severity: newStatus === 'RECALLED' ? 'CRITICAL' : 'INFO',
+                targetUserIds: [manufacturerUser.id],
+                metadata: {
+                  batchNumber: batch.batchNumber,
+                  oldStatus: batch.status,
+                  newStatus,
+                },
+              });
+            }
+          } catch (notifyErr) {
+            console.error('Failed to send manufacturer notification for batch status change:', notifyErr);
+          }
+        }
       }
     }
 

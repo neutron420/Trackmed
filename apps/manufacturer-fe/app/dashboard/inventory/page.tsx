@@ -42,10 +42,11 @@ export default function InventoryPage() {
 
   const fetchInventoryData = async (token: string) => {
     try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
       const [summaryRes, lowStockRes, expiringRes] = await Promise.all([
-        fetch("/api/inventory/summary", { headers: { Authorization: `Bearer ${token}` } }),
-        fetch("/api/inventory/low-stock?threshold=100", { headers: { Authorization: `Bearer ${token}` } }),
-        fetch("/api/inventory/expiring?days=30", { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${apiUrl}/api/inventory/summary`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${apiUrl}/api/inventory/low-stock?threshold=100`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${apiUrl}/api/inventory/expiring?days=30`, { headers: { Authorization: `Bearer ${token}` } }),
       ]);
 
       const [summaryData, lowStockData, expiringData] = await Promise.all([

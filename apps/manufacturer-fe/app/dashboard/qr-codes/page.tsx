@@ -50,7 +50,8 @@ export default function QRCodesPage() {
 
   const fetchBatches = async (token: string) => {
     try {
-      const res = await fetch("/api/batch?limit=100", {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+      const res = await fetch(`${apiUrl}/api/batch?limit=100`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
@@ -76,7 +77,8 @@ export default function QRCodesPage() {
     setIsGenerating(true);
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("/api/qr-code/generate", {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+      const res = await fetch(`${apiUrl}/api/qr-code/generate`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

@@ -3,6 +3,11 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useRef } from "react";
 import { Sidebar } from "../../../../components/sidebar";
+import { getAddressFromPincode, formatAddress, getAllAddressOptionsFromPincode } from "../../../../utils/pincode";
+import { LocationMap } from "../../../../components/LocationMap";
+import { AddressAutocomplete } from "../../../../components/AddressAutocomplete";
+import { MedicineSelect } from "../../../../components/MedicineSelect";
+import { uploadImageToR2 } from "../../../../utils/imageUpload";
 
 interface User {
   id: string;
@@ -15,7 +20,9 @@ interface Medicine {
   id: string;
   name: string;
   strength: string;
-  genericName: string;
+  genericName: string | null;
+  dosageForm: string;
+  composition?: string;
 }
 
 export default function NewBatchPage() {
@@ -38,8 +45,14 @@ export default function NewBatchPage() {
     gstNumber: "",
     warehouseLocation: "",
     warehouseAddress: "",
+    warehousePincode: "",
     imageUrl: "",
   });
+  
+  const [pincodeLoading, setPincodeLoading] = useState(false);
+  const [pincodeError, setPincodeError] = useState<string | null>(null);
+  const [imageUploading, setImageUploading] = useState(false);
+  const [imageUploadError, setImageUploadError] = useState<string | null>(null);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -62,12 +75,15 @@ export default function NewBatchPage() {
 
   const fetchMedicines = async (token: string) => {
     try {
-      const res = await fetch("/api/medicine?limit=100", {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+      const res = await fetch(`${apiUrl}/api/medicine?limit=1000`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
       if (data.success) {
         setMedicines(data.data || []);
+      } else {
+        console.error("Failed to fetch medicines:", data.error);
       }
     } catch (error) {
       console.error("Failed to fetch medicines:", error);
@@ -80,22 +96,42 @@ export default function NewBatchPage() {
     router.push("/login");
   };
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      // For now, create a preview URL (in production, you'd upload to cloud storage)
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreview(reader.result as string);
-        // In production, upload to Cloudinary/S3 and get URL
-        // For demo, we'll use a placeholder
-        setFormData((prev) => ({
-          ...prev,
-          imageUrl: reader.result as string,
-        }));
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+
+    // Show preview immediately
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setImagePreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+
+    // Upload to Cloudflare R2
+    setImageUploading(true);
+    setImageUploadError(null);
+
+    const token = localStorage.getItem("token");
+    if (!token) {
+      setImageUploadError("Please login to upload images");
+      setImageUploading(false);
+      return;
     }
+
+    const result = await uploadImageToR2(file, "batches", token);
+
+    if (result.success && result.url) {
+      setFormData((prev) => ({
+        ...prev,
+        imageUrl: result.url!,
+      }));
+      setImageUploadError(null);
+    } else {
+      setImageUploadError(result.error || "Failed to upload image");
+      setImagePreview(null);
+    }
+
+    setImageUploading(false);
   };
 
   const validateForm = () => {
@@ -144,7 +180,8 @@ export default function NewBatchPage() {
 
       const batchHash = generateBatchHash(formData);
 
-      const res = await fetch("/api/batch/register", {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+      const res = await fetch(`${apiUrl}/api/batch/register`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -250,27 +287,16 @@ export default function NewBatchPage() {
                   <label className="mb-1 block text-xs font-medium text-slate-700">
                     Medicine <span className="text-red-500">*</span>
                   </label>
-                  <select
+                  <MedicineSelect
+                    medicines={medicines}
                     value={formData.medicineId}
-                    onChange={(e) => setFormData({ ...formData, medicineId: e.target.value })}
-                    className={`w-full rounded-lg border px-3 py-2 text-sm ${
-                      errors.medicineId ? "border-red-300 bg-red-50" : "border-slate-200"
-                    } focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500`}
-                  >
-                    <option value="">Select medicine...</option>
-                    {medicines.map((med) => (
-                      <option key={med.id} value={med.id}>
-                        {med.name} - {med.strength}
-                      </option>
-                    ))}
-                  </select>
-                  {errors.medicineId && (
-                    <p className="mt-1 text-xs text-red-500">{errors.medicineId}</p>
-                  )}
+                    onChange={(medicineId) => setFormData({ ...formData, medicineId })}
+                    error={errors.medicineId}
+                  />
                   <button
                     type="button"
                     onClick={() => router.push("/dashboard/products/new")}
-                    className="mt-1 text-xs text-emerald-600 hover:text-emerald-700"
+                    className="mt-2 text-xs text-emerald-600 hover:text-emerald-700"
                   >
                     + Add new medicine
                   </button>
@@ -394,18 +420,102 @@ export default function NewBatchPage() {
                   />
                 </div>
 
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">
+                    Pin Code <span className="text-emerald-600">(Auto-fill address)</span>
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={formData.warehousePincode}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/\D/g, '').slice(0, 6);
+                        setFormData({ ...formData, warehousePincode: value });
+                        setPincodeError(null);
+                      }}
+                      onBlur={async () => {
+                        if (formData.warehousePincode.length === 6) {
+                          setPincodeLoading(true);
+                          setPincodeError(null);
+                          const result = await getAddressFromPincode(formData.warehousePincode);
+                          setPincodeLoading(false);
+                          
+                          if (result.success && result.data) {
+                            const address = formatAddress(result.data, formData.warehouseLocation);
+                            setFormData({
+                              ...formData,
+                              warehouseAddress: address,
+                            });
+                          } else {
+                            setPincodeError(result.error || 'Failed to fetch address');
+                          }
+                        }
+                      }}
+                      placeholder="Enter 6-digit pin code"
+                      maxLength={6}
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    />
+                    {pincodeLoading && (
+                      <div className="flex items-center px-2">
+                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
+                      </div>
+                    )}
+                  </div>
+                  {pincodeError && (
+                    <p className="mt-1 text-xs text-red-500">{pincodeError}</p>
+                  )}
+                  {formData.warehousePincode.length > 0 && formData.warehousePincode.length < 6 && (
+                    <p className="mt-1 text-xs text-slate-500">Enter 6-digit pin code</p>
+                  )}
+                </div>
+
                 <div className="sm:col-span-2">
                   <label className="mb-1 block text-xs font-medium text-slate-700">
                     Warehouse Address
                   </label>
-                  <textarea
-                    value={formData.warehouseAddress}
-                    onChange={(e) => setFormData({ ...formData, warehouseAddress: e.target.value })}
-                    placeholder="Full warehouse address..."
-                    rows={2}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                  />
+                  <div className="relative">
+                    <textarea
+                      value={formData.warehouseAddress}
+                      onChange={(e) => setFormData({ ...formData, warehouseAddress: e.target.value })}
+                      placeholder="Full warehouse address... (or enter pin code above to auto-fill)"
+                      rows={2}
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    />
+                    {/* Address Autocomplete Dropdown */}
+                    {formData.warehousePincode && formData.warehousePincode.length === 6 && (
+                      <AddressAutocomplete
+                        pincode={formData.warehousePincode}
+                        warehouseLocation={formData.warehouseLocation}
+                        onSelect={(address) => {
+                          setFormData({ ...formData, warehouseAddress: address });
+                        }}
+                        className="mt-1"
+                      />
+                    )}
+                  </div>
+                  {formData.warehouseAddress && formData.warehousePincode && (
+                    <p className="mt-1 text-xs text-emerald-600">
+                      ✓ Address auto-filled from pin code {formData.warehousePincode}
+                    </p>
+                  )}
                 </div>
+
+                {/* Map Preview */}
+                {formData.warehousePincode && formData.warehousePincode.length === 6 && formData.warehouseAddress && (
+                  <div className="sm:col-span-2">
+                    <label className="mb-1 block text-xs font-medium text-slate-700">
+                      Location Map
+                    </label>
+                    <LocationMap
+                      address={formData.warehouseAddress}
+                      pincode={formData.warehousePincode}
+                      height={250}
+                    />
+                    <p className="mt-1 text-xs text-slate-500">
+                      Map showing approximate location for pin code {formData.warehousePincode}
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -443,17 +553,30 @@ export default function NewBatchPage() {
                 <div className="text-xs text-slate-500">
                   <p>Upload a photo of the medicine packaging.</p>
                   <p className="mt-1">Supported: JPG, PNG, WebP (max 5MB)</p>
-                  {imagePreview && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setImagePreview(null);
-                        setFormData({ ...formData, imageUrl: "" });
-                      }}
-                      className="mt-2 text-red-500 hover:text-red-600"
-                    >
-                      Remove image
-                    </button>
+                  {imageUploading && (
+                    <div className="mt-2 flex items-center gap-2 text-emerald-600">
+                      <div className="h-3 w-3 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
+                      <span>Uploading to Cloudflare R2...</span>
+                    </div>
+                  )}
+                  {imageUploadError && (
+                    <p className="mt-2 text-red-500">{imageUploadError}</p>
+                  )}
+                  {imagePreview && formData.imageUrl && !imageUploading && (
+                    <div className="mt-2">
+                      <p className="text-emerald-600">✓ Image uploaded successfully</p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setImagePreview(null);
+                          setFormData({ ...formData, imageUrl: "" });
+                          setImageUploadError(null);
+                        }}
+                        className="mt-1 text-red-500 hover:text-red-600"
+                      >
+                        Remove image
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>

@@ -51,7 +51,8 @@ export default function BatchesPage() {
 
   const fetchBatches = async (token: string) => {
     try {
-      const res = await fetch("/api/batch?limit=50", {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+      const res = await fetch(`${apiUrl}/api/batch?limit=50`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();

@@ -1,5 +1,6 @@
 import prisma from '../config/database';
 import { createAuditTrail } from './audit-trail.service';
+import { sendManufacturerOperation } from './notification.service';
 
 // Define ShipmentStatus locally (matches Prisma schema)
 export type ShipmentStatus = 'PENDING' | 'PICKED_UP' | 'IN_TRANSIT' | 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'CANCELLED' | 'RETURNED';
@@ -103,6 +104,20 @@ export async function createShipment(data: {
         quantity: data.quantity,
       },
     });
+
+    // Send notification to admins about shipment creation
+    try {
+      await sendManufacturerOperation(
+        'Created Shipment',
+        `Shipment ${shipment.shipmentNumber} created for batch ${batch.batchNumber} (${batch.medicine.name}) - Quantity: ${data.quantity} to ${distributor.name}`,
+        batch.id,
+        batch.batchNumber,
+        batch.manufacturer.name,
+        'INFO'
+      );
+    } catch (notifyErr) {
+      console.error('Failed to send admin notification for shipment creation:', notifyErr);
+    }
 
     return { success: true, shipment };
   } catch (error: any) {

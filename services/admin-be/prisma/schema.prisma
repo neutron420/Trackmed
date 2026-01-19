@@ -135,6 +135,7 @@ model Batch {
   // Warehouse and lifecycle info (database only)
   warehouseLocation   String?  @map("warehouse_location")
   warehouseAddress    String?  @map("warehouse_address") @db.Text
+  imageUrl            String?  @map("image_url") // Cloudflare R2 URL for batch image
   lifecycleStatus     LifecycleStatus @default(IN_PRODUCTION) @map("lifecycle_status")
   distributorId       String?  @map("distributor_id")
   pharmacyId          String?  @map("pharmacy_id")
@@ -152,6 +153,7 @@ model Batch {
   cartItems           CartItem[]
   orderItems          OrderItem[]
   shipments           Shipment[]
+  notifications       Notification[]
 
   @@index([batchHash])
   @@index([manufacturerId])
@@ -650,4 +652,52 @@ model PushToken {
   @@index([userId])
   @@index([playerId])
   @@map("push_tokens")
+}
+
+// In-app notifications
+model Notification {
+  id          String             @id @default(cuid())
+  type        NotificationType
+  batchId     String?            @map("batch_id")
+  message     String
+  severity    NotificationSeverity
+  isRead      Boolean            @default(false) @map("is_read")
+  readAt      DateTime?          @map("read_at")
+  metadata    Json?              // Additional data (manufacturerId, medicineId, etc.)
+  targetRoles UserRole[]         @map("target_roles")
+  targetUserIds String[]         @map("target_user_ids") // Array of user IDs
+  createdAt   DateTime           @default(now()) @map("created_at")
+  updatedAt   DateTime           @updatedAt @map("updated_at")
+
+  // Relations
+  batch       Batch?             @relation(fields: [batchId], references: [id], onDelete: SetNull)
+
+  @@index([batchId])
+  @@index([isRead])
+  @@index([createdAt])
+  @@index([type])
+  @@map("notifications")
+}
+
+enum NotificationType {
+  FRAUD_ALERT
+  BATCH_RECALL
+  BATCH_CREATED
+  BATCH_STATUS_CHANGED
+  EXPIRY_WARNING
+  LIFECYCLE_CHANGE
+  LOW_STOCK
+  STATUS_CHANGE
+  MANUFACTURER_OPERATION
+  ADMIN_ACTION
+  MANUFACTURER_VERIFIED
+  MANUFACTURER_UPDATED
+  SYSTEM
+}
+
+enum NotificationSeverity {
+  INFO
+  WARNING
+  ERROR
+  CRITICAL
 }

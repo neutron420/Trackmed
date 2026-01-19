@@ -8,6 +8,7 @@ import { ChartCard, SimpleBarChart, SimpleDonutChart, SimpleAreaChart } from "..
 import { DataTable, StatusBadge } from "../../components/data-table";
 import { ActivityFeed } from "../../components/activity-feed";
 import { QuickAction, ProgressCard, AlertCard } from "../../components/cards";
+import { DashboardHeader } from "../../components/DashboardHeader";
 
 interface User {
   id: string;
@@ -103,27 +104,17 @@ export default function DashboardPage() {
         style={{ marginLeft: isCollapsed ? 72 : 260 }}
       >
         {/* Top Header */}
-        <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur-sm">
-          <div className="flex items-center justify-between px-5 py-3">
-            <div>
-              <h1 className="text-lg font-semibold text-slate-900">Dashboard</h1>
-              <p className="text-xs text-slate-500">Welcome back, {user?.name || "Manufacturer"}</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <button className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50">
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-              </button>
-              <button className="relative flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50">
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                </svg>
-                <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-medium text-white">3</span>
-              </button>
-            </div>
-          </div>
-        </header>
+        <DashboardHeader
+          title="Dashboard"
+          subtitle={`Welcome back, ${user?.name || "Manufacturer"}`}
+          actions={
+            <button className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50">
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </button>
+          }
+        />
 
         <div className="p-5">
           {/* Stats Row */}

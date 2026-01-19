@@ -5,6 +5,7 @@ import { Program } from '@coral-xyz/anchor';
 import { connection, deriveBatchPDA, deriveManufacturerRegistryPDA, PROGRAM_ID } from '../config/solana';
 import { IDL } from '../idl/solana_test_project';
 import { createAuditTrail } from './audit-trail.service';
+import { sendNotification } from './notification.service';
 
 /**
  * Register batch on both blockchain and database
@@ -26,6 +27,7 @@ export interface BatchRegistrationData {
   gstNumber?: string;
   warehouseLocation?: string;
   warehouseAddress?: string;
+  imageUrl?: string; // Cloudflare R2 URL
 }
 
 /**
@@ -139,11 +141,11 @@ export async function registerBatch(
         expiryDate: data.expiryDate,
         status: 'VALID', // Default status
         createdAt: new Date(),
-        
+
         // Blockchain transaction reference
         blockchainTxHash: blockchainResult.txHash,
         blockchainPda: blockchainResult.pda,
-        
+
         // Business details (database only)
         batchNumber: data.batchNumber,
         manufacturerId: data.manufacturerId,
@@ -155,9 +157,43 @@ export async function registerBatch(
         gstNumber: data.gstNumber,
         warehouseLocation: data.warehouseLocation,
         warehouseAddress: data.warehouseAddress,
+        imageUrl: data.imageUrl,
         lifecycleStatus: 'IN_PRODUCTION',
       },
+      include: {
+        manufacturer: {
+          select: {
+            name: true,
+          },
+        },
+        medicine: {
+          select: {
+            name: true,
+          },
+        },
+      },
     });
+
+    // Send notification to admin(s) about new batch registration
+    try {
+      await sendNotification({
+        type: 'BATCH_CREATED',
+        batchId: batch.id,
+        message: `Manufacturer ${batch.manufacturer.name} uploaded new batch: ${batch.batchNumber} (${batch.medicine.name}, Qty: ${batch.quantity})`,
+        severity: 'INFO',
+        targetRoles: ['ADMIN', 'SUPERADMIN'],
+        metadata: {
+          manufacturerId: batch.manufacturerId,
+          manufacturerName: batch.manufacturer.name,
+          medicineId: batch.medicineId,
+          medicineName: batch.medicine.name,
+          batchNumber: batch.batchNumber,
+          quantity: batch.quantity,
+        },
+      });
+    } catch (notifyErr) {
+      console.error('Failed to send admin notification for new batch:', notifyErr);
+    }
 
     // Create audit trail (will be called from route with user context)
 
@@ -171,14 +207,14 @@ export async function registerBatch(
       success: true,
       batchId: batch.id,
     };
-    
+
     if (blockchainResult.txHash) {
       result.blockchainTxHash = blockchainResult.txHash;
     }
     if (blockchainResult.pda) {
       result.blockchainPda = blockchainResult.pda;
     }
-    
+
     return result;
   } catch (error: any) {
     return {

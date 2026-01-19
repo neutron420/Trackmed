@@ -35,6 +35,8 @@ export interface BatchData {
   status: 'VALID' | 'RECALLED';
   blockchainTxHash: string | null;
   blockchainPda: string | null;
+  // Optional batch image (e.g., packaging photo) stored in DB (Cloudflare R2 URL)
+  imageUrl: string | null;
   
   // Business details
   manufacturer: {
@@ -149,6 +151,7 @@ export async function verifyAndGetBatch(
         mrp: dbBatch.medicine.mrp.toNumber(),
         imageUrl: dbBatch.medicine.imageUrl,
       },
+      imageUrl: dbBatch.imageUrl,
       quantity: dbBatch.quantity,
       invoiceNumber: dbBatch.invoiceNumber,
       invoiceDate: dbBatch.invoiceDate,

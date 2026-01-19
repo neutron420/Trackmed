@@ -53,7 +53,8 @@ export default function ProfilePage() {
 
   const fetchProfile = async (token: string) => {
     try {
-      const res = await fetch("/api/auth/me", {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+      const res = await fetch(`${apiUrl}/api/auth/me`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
@@ -82,7 +83,8 @@ export default function ProfilePage() {
 
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("/api/auth/me", {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+      const res = await fetch(`${apiUrl}/api/auth/me`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -124,7 +126,8 @@ export default function ProfilePage() {
 
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("/api/auth/me", {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+      const res = await fetch(`${apiUrl}/api/auth/me`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",

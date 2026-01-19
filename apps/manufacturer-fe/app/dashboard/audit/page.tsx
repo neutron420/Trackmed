@@ -62,7 +62,8 @@ export default function AuditPage() {
         params.append("action", actionFilter);
       }
 
-      const res = await fetch(`/api/audit-trail?${params}`, {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+      const res = await fetch(`${apiUrl}/api/audit-trail?${params}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
