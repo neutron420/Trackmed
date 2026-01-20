@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
-import { Sidebar } from "../../../../components/sidebar";
+
 import { FiArrowLeft, FiTruck, FiPackage, FiUsers, FiCalendar, FiHash, FiMapPin } from "react-icons/fi";
 
 interface User {
@@ -32,8 +32,8 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
 export default function NewShipmentPage() {
   const router = useRouter();
+  
   const [user, setUser] = useState<User | null>(null);
-  const [isCollapsed, setIsCollapsed] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -105,11 +105,7 @@ export default function NewShipmentPage() {
     }
   }, [isLoading, fetchData]);
 
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    router.push("/login");
-  };
+  
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -172,18 +168,8 @@ export default function NewShipmentPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <Sidebar
-        user={user}
-        onLogout={handleLogout}
-        isCollapsed={isCollapsed}
-        onToggle={() => setIsCollapsed((prev) => !prev)}
-      />
+    <div>
 
-      <main
-        className="min-h-screen transition-all duration-200"
-        style={{ marginLeft: isCollapsed ? 72 : 260 }}
-      >
         <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur-sm">
           <div className="flex items-center gap-4 px-5 py-3">
             <button
@@ -391,7 +377,6 @@ export default function NewShipmentPage() {
             </form>
           </div>
         </div>
-      </main>
-    </div>
+      </div>
   );
 }

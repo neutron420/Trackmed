@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
-import { Sidebar } from "../../../components/sidebar";
+
 import { StatCard } from "../../../components/stat-card";
 import { FiUsers, FiShield, FiClock, FiPlus, FiSearch, FiEdit2, FiTrash2, FiRefreshCw, FiPhone, FiMail, FiMapPin } from "react-icons/fi";
 
@@ -33,8 +33,8 @@ interface Distributor {
 
 export default function DistributorsPage() {
   const router = useRouter();
+  
   const [user, setUser] = useState<User | null>(null);
-  const [isCollapsed, setIsCollapsed] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [distributors, setDistributors] = useState<Distributor[]>([]);
   const [search, setSearch] = useState("");
@@ -75,11 +75,7 @@ export default function DistributorsPage() {
     }
   }, [router, fetchDistributors]);
 
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    router.push("/login");
-  };
+  
 
   const handleDelete = async (id: string, name: string) => {
     if (!confirm(`Are you sure you want to delete "${name}"? This action cannot be undone.`)) {
@@ -121,18 +117,8 @@ export default function DistributorsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <Sidebar
-        user={user}
-        onLogout={handleLogout}
-        isCollapsed={isCollapsed}
-        onToggle={() => setIsCollapsed((prev) => !prev)}
-      />
+    <div>
 
-      <main
-        className="min-h-screen transition-all duration-200"
-        style={{ marginLeft: isCollapsed ? 72 : 260 }}
-      >
         <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur-sm">
           <div className="flex items-center justify-between px-5 py-3">
             <div>
@@ -254,7 +240,6 @@ export default function DistributorsPage() {
                       {new Date(distributor.createdAt).toLocaleDateString()}
                     </span>
                   </div>
-
                   <div className="mt-3 flex gap-2 border-t border-slate-100 pt-3">
                     <button
                       onClick={() => router.push(`/dashboard/distributors/${distributor.id}/edit`)}
@@ -291,7 +276,6 @@ export default function DistributorsPage() {
             </div>
           )}
         </div>
-      </main>
-    </div>
+      </div>
   );
 }

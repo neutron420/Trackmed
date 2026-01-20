@@ -2,8 +2,6 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useRef } from "react";
-import { Sidebar } from "../../../../components/sidebar";
-
 interface User {
   id: string;
   email: string;
@@ -13,8 +11,8 @@ interface User {
 
 export default function NewProductPage() {
   const router = useRouter();
+  
   const [user, setUser] = useState<User | null>(null);
-  const [isCollapsed, setIsCollapsed] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -64,11 +62,7 @@ export default function NewProductPage() {
     }
   }, [router]);
 
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    router.push("/login");
-  };
+  
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -142,18 +136,8 @@ export default function NewProductPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <Sidebar
-        user={user}
-        onLogout={handleLogout}
-        isCollapsed={isCollapsed}
-        onToggle={() => setIsCollapsed((prev) => !prev)}
-      />
+    <div>
 
-      <main
-        className="min-h-screen transition-all duration-200"
-        style={{ marginLeft: isCollapsed ? 72 : 260 }}
-      >
         <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur-sm">
           <div className="flex items-center justify-between px-5 py-3">
             <div className="flex items-center gap-3">
@@ -389,7 +373,6 @@ export default function NewProductPage() {
             </div>
           </form>
         </div>
-      </main>
-    </div>
+      </div>
   );
 }

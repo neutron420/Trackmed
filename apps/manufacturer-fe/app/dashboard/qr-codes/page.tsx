@@ -2,9 +2,9 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Sidebar } from "../../../components/sidebar";
-import { DataTable, StatusBadge } from "../../../components/data-table";
 
+import { DataTable, StatusBadge } from "../../../components/data-table";
+import { Sidebar } from "../../../components/sidebar";
 // Base URL for QR code verification - when scanned, redirects to this URL
 const VERIFY_BASE_URL = typeof window !== 'undefined' 
   ? `${window.location.origin}/verify` 
@@ -33,8 +33,8 @@ interface Batch {
 
 export default function QRCodesPage() {
   const router = useRouter();
+  
   const [user, setUser] = useState<User | null>(null);
-  const [isCollapsed, setIsCollapsed] = useState(false);
   const [batches, setBatches] = useState<Batch[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedBatch, setSelectedBatch] = useState<string>("");
@@ -45,6 +45,14 @@ export default function QRCodesPage() {
   const [viewingBatchId, setViewingBatchId] = useState<string | null>(null);
   const [viewingBatchName, setViewingBatchName] = useState<string>("");
   const [isLoadingQRs, setIsLoadingQRs] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false);
+
+  // Handle user logout
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    router.push("/login");
+  };
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -80,11 +88,7 @@ export default function QRCodesPage() {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    router.push("/login");
-  };
+  
 
   const generateQRCodes = async () => {
     if (!selectedBatch || qrQuantity <= 0) return;

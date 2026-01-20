@@ -218,6 +218,226 @@ router.get('/me', async (req: Request, res: Response) => {
 });
 
 /**
+ * POST /api/auth/forgot-password
+ * Request password reset - generates a reset token
+ */
+router.post('/forgot-password', authLimiter, async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        error: 'Email is required',
+      });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { email },
+    });
+
+    // Always return success even if user not found (security best practice)
+    if (!user) {
+      return res.json({
+        success: true,
+        message: 'If an account exists with this email, a password reset link will be sent.',
+      });
+    }
+
+    // Generate a secure reset token
+    const crypto = require('crypto');
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const resetTokenHash = crypto.createHash('sha256').update(resetToken).digest('hex');
+    const resetTokenExpiry = new Date(Date.now() + 3600000); // 1 hour from now
+
+    // Store reset token in user record (we'll use the refreshTokens table for this)
+    // Delete any existing reset tokens for this user first
+    await prisma.refreshToken.deleteMany({
+      where: {
+        userId: user.id,
+        deviceName: 'PASSWORD_RESET',
+      },
+    });
+
+    // Create new reset token
+    await prisma.refreshToken.create({
+      data: {
+        token: resetTokenHash,
+        userId: user.id,
+        deviceName: 'PASSWORD_RESET',
+        expiresAt: resetTokenExpiry,
+      },
+    });
+
+    // In production, you would send an email here with the reset link
+    // For now, we'll return the token in the response (remove in production!)
+    console.log(`[Password Reset] Token for ${email}: ${resetToken}`);
+    console.log(`[Password Reset] Reset URL: /reset-password?token=${resetToken}&email=${encodeURIComponent(email)}`);
+
+    res.json({
+      success: true,
+      message: 'If an account exists with this email, a password reset link will be sent.',
+      // Remove this in production - only for development/testing
+      ...(process.env.NODE_ENV !== 'production' && { 
+        resetToken,
+        resetUrl: `/reset-password?token=${resetToken}&email=${encodeURIComponent(email)}`,
+      }),
+    });
+  } catch (error: any) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to process password reset request',
+    });
+  }
+});
+
+/**
+ * POST /api/auth/reset-password
+ * Reset password using token
+ */
+router.post('/reset-password', authLimiter, async (req: Request, res: Response) => {
+  try {
+    const { token, email, newPassword } = req.body;
+
+    if (!token || !email || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        error: 'Token, email, and new password are required',
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        error: 'Password must be at least 6 characters',
+      });
+    }
+
+    // Find user
+    const user = await prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid or expired reset token',
+      });
+    }
+
+    // Hash the provided token to compare with stored hash
+    const crypto = require('crypto');
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+
+    // Find valid reset token
+    const resetToken = await prisma.refreshToken.findFirst({
+      where: {
+        userId: user.id,
+        token: tokenHash,
+        deviceName: 'PASSWORD_RESET',
+        expiresAt: { gt: new Date() },
+        isRevoked: false,
+      },
+    });
+
+    if (!resetToken) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid or expired reset token',
+      });
+    }
+
+    // Update password
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash },
+    });
+
+    // Delete the used reset token
+    await prisma.refreshToken.delete({
+      where: { id: resetToken.id },
+    });
+
+    // Also invalidate all other refresh tokens for security
+    await prisma.refreshToken.updateMany({
+      where: { userId: user.id },
+      data: { isRevoked: true },
+    });
+
+    res.json({
+      success: true,
+      message: 'Password has been reset successfully. Please login with your new password.',
+    });
+  } catch (error: any) {
+    console.error('Reset password error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to reset password',
+    });
+  }
+});
+
+/**
+ * POST /api/auth/verify-reset-token
+ * Verify if a reset token is valid (for frontend validation)
+ */
+router.post('/verify-reset-token', async (req: Request, res: Response) => {
+  try {
+    const { token, email } = req.body;
+
+    if (!token || !email) {
+      return res.status(400).json({
+        success: false,
+        error: 'Token and email are required',
+      });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid token',
+      });
+    }
+
+    const crypto = require('crypto');
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+
+    const resetToken = await prisma.refreshToken.findFirst({
+      where: {
+        userId: user.id,
+        token: tokenHash,
+        deviceName: 'PASSWORD_RESET',
+        expiresAt: { gt: new Date() },
+        isRevoked: false,
+      },
+    });
+
+    if (!resetToken) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid or expired token',
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Token is valid',
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: 'Failed to verify token',
+    });
+  }
+});
+
+/**
  * PATCH /api/auth/me
  * Update current user profile
  */

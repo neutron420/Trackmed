@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useRef } from "react";
-import { Sidebar } from "../../../../components/sidebar";
+
 import { getAddressFromPincode, formatAddress, getAllAddressOptionsFromPincode } from "../../../../utils/pincode";
 import { LocationMap } from "../../../../components/LocationMap";
 import { AddressAutocomplete } from "../../../../components/AddressAutocomplete";
@@ -27,8 +27,8 @@ interface Medicine {
 
 export default function NewBatchPage() {
   const router = useRouter();
+  
   const [user, setUser] = useState<User | null>(null);
-  const [isCollapsed, setIsCollapsed] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [medicines, setMedicines] = useState<Medicine[]>([]);
   const [medicinesLoading, setMedicinesLoading] = useState(true);
@@ -128,11 +128,7 @@ export default function NewBatchPage() {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    router.push("/login");
-  };
+  
 
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -268,18 +264,8 @@ export default function NewBatchPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <Sidebar
-        user={user}
-        onLogout={handleLogout}
-        isCollapsed={isCollapsed}
-        onToggle={() => setIsCollapsed((prev) => !prev)}
-      />
+    <>
 
-      <main
-        className="min-h-screen transition-all duration-200"
-        style={{ marginLeft: isCollapsed ? 72 : 260 }}
-      >
         <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur-sm">
           <div className="flex items-center justify-between px-5 py-3">
             <div className="flex items-center gap-3">
@@ -659,7 +645,6 @@ export default function NewBatchPage() {
                 </div>
               </div>
             </div>
-
             {/* Blockchain Wallet */}
             <div className="mb-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
               <h2 className="mb-4 text-sm font-semibold text-slate-900">Blockchain Wallet</h2>
@@ -721,7 +706,8 @@ export default function NewBatchPage() {
             </div>
           </form>
         </div>
-      </main>
-    </div>
+      </>
   );
 }
+
+

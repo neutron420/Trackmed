@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Sidebar } from "../../../components/sidebar";
+
 import { FiUser, FiMail, FiShield, FiCalendar, FiSave, FiLock, FiCheck, FiX } from "react-icons/fi";
 
 interface User {
@@ -17,8 +17,8 @@ interface User {
 
 export default function ProfilePage() {
   const router = useRouter();
+  
   const [user, setUser] = useState<User | null>(null);
-  const [isCollapsed, setIsCollapsed] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -70,11 +70,7 @@ export default function ProfilePage() {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    router.push("/login");
-  };
+  
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -162,18 +158,8 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <Sidebar
-        user={user}
-        onLogout={handleLogout}
-        isCollapsed={isCollapsed}
-        onToggle={() => setIsCollapsed((prev) => !prev)}
-      />
+    <div>
 
-      <main
-        className="min-h-screen transition-all duration-200"
-        style={{ marginLeft: isCollapsed ? 72 : 260 }}
-      >
         <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur-sm">
           <div className="flex items-center justify-between px-5 py-3">
             <div>
@@ -251,7 +237,6 @@ export default function ProfilePage() {
                 </div>
               </div>
             </div>
-
             {/* Edit Profile Form */}
             <div className="lg:col-span-2 space-y-5">
               {/* Basic Info */}
@@ -398,7 +383,6 @@ export default function ProfilePage() {
             </div>
           </div>
         </div>
-      </main>
-    </div>
+      </div>
   );
 }

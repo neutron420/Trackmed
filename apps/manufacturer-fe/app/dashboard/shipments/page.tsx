@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
-import { Sidebar } from "../../../components/sidebar";
+
 import { StatCard } from "../../../components/stat-card";
 import { DataTable, StatusBadge } from "../../../components/data-table";
 import { FiTruck, FiTrendingUp, FiCheckCircle, FiClock, FiPlus, FiSearch, FiRefreshCw, FiEye, FiX, FiMapPin } from "react-icons/fi";
@@ -26,7 +26,8 @@ interface Shipment {
   createdAt: string;
   batch: {
     batchNumber: string;
-    medicine: { name: string; strength: string };
+    imageUrl?: string;
+    medicine: { name: string; strength: string; imageUrl?: string };
     manufacturer: { name: string };
   };
   distributor: { name: string; city: string | null };
@@ -51,8 +52,8 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
 export default function ShipmentsPage() {
   const router = useRouter();
+  
   const [user, setUser] = useState<User | null>(null);
-  const [isCollapsed, setIsCollapsed] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [shipments, setShipments] = useState<Shipment[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -129,11 +130,7 @@ export default function ShipmentsPage() {
     return () => clearTimeout(timer);
   }, [search, statusFilter, isLoading, fetchShipments]);
 
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    router.push("/login");
-  };
+  
 
   const handleUpdateStatus = async (shipmentId: string, newStatus: string) => {
     setIsUpdating(true);
@@ -216,18 +213,8 @@ export default function ShipmentsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <Sidebar
-        user={user}
-        onLogout={handleLogout}
-        isCollapsed={isCollapsed}
-        onToggle={() => setIsCollapsed((prev) => !prev)}
-      />
+    <>
 
-      <main
-        className="min-h-screen transition-all duration-200"
-        style={{ marginLeft: isCollapsed ? 72 : 260 }}
-      >
         <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur-sm">
           <div className="flex items-center justify-between px-5 py-3">
             <div>
@@ -407,8 +394,7 @@ export default function ShipmentsPage() {
               </div>
             )}
           </div>
-        </div>
-      </main>
+      </div>
 
       {/* Shipment Details Modal */}
       {selectedShipment && (
@@ -603,6 +589,6 @@ export default function ShipmentsPage() {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

@@ -2,8 +2,9 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
-import { Sidebar } from "../../../components/sidebar";
+
 import { FiPlus, FiSearch, FiPackage, FiEdit2, FiTrash2, FiRefreshCw } from "react-icons/fi";
+import { Sidebar } from "@/components/sidebar";
 
 interface User {
   id: string;
@@ -27,6 +28,7 @@ interface Medicine {
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
 export default function ProductsPage() {
+  
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [isCollapsed, setIsCollapsed] = useState(false);

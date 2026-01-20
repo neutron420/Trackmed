@@ -346,6 +346,86 @@ router.get('/', async (req: Request, res: Response) => {
 });
 
 /**
+ * GET /api/batch/by-id/:id
+ * Get batch by database ID (for detail pages)
+ */
+router.get('/by-id/:id', async (req: Request, res: Response) => {
+  try {
+    const id = asString(req.params.id);
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        error: 'Batch ID is required',
+      });
+    }
+
+    const batch = await prisma.batch.findUnique({
+      where: { id },
+      include: {
+        medicine: {
+          select: {
+            id: true,
+            name: true,
+            strength: true,
+            composition: true,
+            dosageForm: true,
+            genericName: true,
+            mrp: true,
+            imageUrl: true,
+          },
+        },
+        manufacturer: {
+          select: {
+            id: true,
+            name: true,
+            licenseNumber: true,
+            address: true,
+            city: true,
+            state: true,
+          },
+        },
+        distributor: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        pharmacy: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        _count: {
+          select: {
+            qrCodes: true,
+            scanLogs: true,
+          },
+        },
+      },
+    });
+
+    if (!batch) {
+      return res.status(404).json({
+        success: false,
+        error: 'Batch not found',
+      });
+    }
+
+    res.json({
+      success: true,
+      data: batch,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Internal server error',
+    });
+  }
+});
+
+/**
  * GET /api/batch/:batchHash
  * Verify batch using blockchain (internal) and return database data only
  * Frontend receives ONLY database data

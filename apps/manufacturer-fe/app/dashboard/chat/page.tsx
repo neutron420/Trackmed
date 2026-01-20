@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useRef, useCallback } from "react";
-import { Sidebar } from "../../../components/sidebar";
+
 import {
   FiSend,
   FiUsers,
@@ -46,8 +46,8 @@ interface Message {
 
 export default function ChatPage() {
   const router = useRouter();
+  
   const [user, setUser] = useState<User | null>(null);
-  const [isCollapsed, setIsCollapsed] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [chatUsers, setChatUsers] = useState<ChatUser[]>([]);
   const [selectedUser, setSelectedUser] = useState<ChatUser | null>(null);
@@ -225,18 +225,8 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <Sidebar
-        user={user}
-        onLogout={handleLogout}
-        isCollapsed={isCollapsed}
-        onToggle={() => setIsCollapsed((prev) => !prev)}
-      />
+    <div>
 
-      <main
-        className="min-h-screen transition-all duration-200"
-        style={{ marginLeft: isCollapsed ? 72 : 260 }}
-      >
         <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur-sm">
           <div className="flex items-center justify-between px-5 py-3">
             <div className="flex items-center gap-3">
@@ -444,7 +434,7 @@ export default function ChatPage() {
                             minute: "2-digit",
                           })}
                         </p>
-                      </div>
+                      </div >
                     </div>
                   ))}
                   <div ref={messagesEndRef} />
@@ -483,7 +473,8 @@ export default function ChatPage() {
             </div>
           </div>
         </div>
-      </main>
-    </div>
+      </div>
   );
 }
+
+

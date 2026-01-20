@@ -2,7 +2,7 @@
 
 import { useRouter, useParams } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
-import { Sidebar } from "../../../../../components/sidebar";
+
 import { FiArrowLeft, FiSave, FiTrash2, FiPackage, FiDollarSign, FiInfo } from "react-icons/fi";
 
 interface User {
@@ -32,8 +32,8 @@ export default function EditProductPage() {
   const params = useParams();
   const productId = params.id as string;
 
-  const [user, setUser] = useState<User | null>(null);
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  
+   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -104,11 +104,7 @@ export default function EditProductPage() {
     }
   }, [isLoading, productId, fetchProduct]);
 
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    router.push("/login");
-  };
+  
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -189,18 +185,8 @@ export default function EditProductPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <Sidebar
-        user={user}
-        onLogout={handleLogout}
-        isCollapsed={isCollapsed}
-        onToggle={() => setIsCollapsed((prev) => !prev)}
-      />
+    <div>
 
-      <main
-        className="min-h-screen transition-all duration-200"
-        style={{ marginLeft: isCollapsed ? 72 : 260 }}
-      >
         <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur-sm">
           <div className="flex items-center justify-between px-5 py-3">
             <div className="flex items-center gap-4">
@@ -422,7 +408,6 @@ export default function EditProductPage() {
             </form>
           </div>
         </div>
-      </main>
-    </div>
+      </div>
   );
 }
