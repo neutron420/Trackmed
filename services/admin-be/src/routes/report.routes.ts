@@ -9,13 +9,12 @@ import {
   getReportStats,
 } from '../services/report.service';
 import { ReportType, ReportStatus } from '@prisma/client';
+import { optionalAuth } from '../middleware/auth.middleware';
 
 const router = Router();
 
-/**
- * GET /api/report/stats
- * Get report statistics
- */
+router.use(optionalAuth);
+
 router.get('/stats', async (req: Request, res: Response) => {
   try {
     const result = await getReportStats();
@@ -39,10 +38,6 @@ router.get('/stats', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * GET /api/report
- * Get all reports with filters
- */
 router.get('/', async (req: Request, res: Response) => {
   try {
     const { type, status, page, limit } = req.query;
@@ -76,10 +71,6 @@ router.get('/', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * GET /api/report/:id
- * Get report by ID
- */
 router.get('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -112,10 +103,6 @@ router.get('/:id', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * POST /api/report
- * Create and generate a new report
- */
 router.post('/', async (req: Request, res: Response) => {
   try {
     const { name, type, parameters, format } = req.body;
@@ -148,7 +135,6 @@ router.post('/', async (req: Request, res: Response) => {
 
     const userId = (req as any).user?.userId || 'system';
 
-    // Create the report
     const createResult = await createReport({
       name,
       type,
@@ -164,7 +150,6 @@ router.post('/', async (req: Request, res: Response) => {
       });
     }
 
-    // Generate report data
     const generateResult = await generateReportData(createResult.report!.id);
 
     if (!generateResult.success) {
@@ -190,10 +175,6 @@ router.post('/', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * POST /api/report/:id/regenerate
- * Regenerate an existing report
- */
 router.post('/:id/regenerate', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -222,10 +203,6 @@ router.post('/:id/regenerate', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * GET /api/report/:id/download
- * Download report data
- */
 router.get('/:id/download', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -246,7 +223,6 @@ router.get('/:id/download', async (req: Request, res: Response) => {
       });
     }
 
-    // Regenerate report data for download
     const generateResult = await generateReportData(id as string);
 
     if (!generateResult.success) {
@@ -256,8 +232,6 @@ router.get('/:id/download', async (req: Request, res: Response) => {
       });
     }
 
-    // Set appropriate headers for download
-    const format = reportResult.report.format || 'PDF';
     const filename = `${reportResult.report.reportNumber}.json`;
 
     res.setHeader('Content-Type', 'application/json');
@@ -272,10 +246,6 @@ router.get('/:id/download', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * DELETE /api/report/:id
- * Delete a report
- */
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -302,10 +272,6 @@ router.delete('/:id', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * POST /api/report/quick/:type
- * Quick report generation by type
- */
 router.post('/quick/:type', async (req: Request, res: Response) => {
   try {
     const { type } = req.params;
@@ -333,7 +299,6 @@ router.post('/quick/:type', async (req: Request, res: Response) => {
     const userId = (req as any).user?.userId || 'system';
     const reportName = `${(type as string).replace(/_/g, ' ')} Report - ${new Date().toLocaleDateString()}`;
 
-    // Create and generate in one go
     const createResult = await createReport({
       name: reportName,
       type: type as ReportType,

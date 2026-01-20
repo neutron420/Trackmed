@@ -16,9 +16,6 @@ export interface AuthenticatedRequest extends Request {
   };
 }
 
-/**
- * Middleware to verify JWT token and attach user to request
- */
 export const verifyToken = (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
     const authHeader = req.headers.authorization;
@@ -56,9 +53,6 @@ export const verifyToken = (req: AuthenticatedRequest, res: Response, next: Next
   }
 };
 
-/**
- * Middleware to check if user has required role(s)
- */
 export const requireRole = (...roles: string[]) => {
   return (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     if (!req.user) {
@@ -79,9 +73,28 @@ export const requireRole = (...roles: string[]) => {
   };
 };
 
-/**
- * Combined middleware: verify token + check role
- */
 export const authWithRole = (...roles: string[]) => {
   return [verifyToken, requireRole(...roles)];
+};
+
+export const optionalAuth = (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return next();
+    }
+
+    const token = authHeader.split(' ')[1];
+
+    if (!token) {
+      return next();
+    }
+
+    const decoded = jwt.verify(token, jwtSecret) as unknown as { userId: string; role: string };
+    req.user = decoded;
+    next();
+  } catch {
+    next();
+  }
 };

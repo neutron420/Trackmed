@@ -1,21 +1,42 @@
 import { Router } from 'express';
 import type { Request, Response } from 'express';
+import prisma from '../config/database';
 import { getAuditTrail, getAuditTrails } from '../services/audit-trail.service';
+import { optionalAuth } from '../middleware/auth.middleware';
 
 const router = Router();
 
-/**
- * GET /api/audit-trail
- * Get audit trails with pagination
- */
+router.use(optionalAuth);
+
+async function getManufacturerIdFromUser(userId: string): Promise<string | null> {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user || user.role !== 'MANUFACTURER') return null;
+    
+    const manufacturer = await prisma.manufacturer.findFirst({
+      where: { email: user.email },
+    });
+    return manufacturer?.id || null;
+  } catch {
+    return null;
+  }
+}
+
 router.get('/', async (req: Request, res: Response) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
     const entityType = req.query.entityType as string | undefined;
     const entityId = req.query.entityId as string | undefined;
+    const userId = (req as any).user?.userId;
+    const userRole = (req as any).user?.role;
 
-    const result = await getAuditTrails(page, limit, entityType as any, entityId);
+    let manufacturerId: string | undefined;
+    if (userRole === 'MANUFACTURER' && userId) {
+      manufacturerId = (await getManufacturerIdFromUser(userId)) || undefined;
+    }
+
+    const result = await getAuditTrails(page, limit, entityType as any, entityId, manufacturerId);
 
     res.json({
       success: true,
@@ -30,10 +51,6 @@ router.get('/', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * GET /api/audit-trail/:entityType/:entityId
- * Get audit trail for a specific entity
- */
 router.get('/:entityType/:entityId', async (req: Request, res: Response) => {
   try {
     const { entityType } = req.params;

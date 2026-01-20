@@ -131,6 +131,7 @@ export async function getShipments(filters?: {
   status?: ShipmentStatus;
   distributorId?: string;
   batchId?: string;
+  manufacturerId?: string; // NEW: Filter by manufacturer
   startDate?: Date;
   endDate?: Date;
   search?: string;
@@ -154,6 +155,13 @@ export async function getShipments(filters?: {
 
     if (filters?.batchId) {
       where.batchId = filters.batchId;
+    }
+
+    // Filter by manufacturer - shipments from manufacturer's batches
+    if (filters?.manufacturerId) {
+      where.batch = {
+        manufacturerId: filters.manufacturerId,
+      };
     }
 
     if (filters?.startDate || filters?.endDate) {
@@ -393,20 +401,24 @@ export async function cancelShipment(id: string, reason: string, cancelledBy: st
 }
 
 // Get shipment statistics
-export async function getShipmentStats() {
+export async function getShipmentStats(manufacturerId?: string) {
   try {
+    // Build where clause for manufacturer filtering
+    const baseWhere: any = manufacturerId ? { batch: { manufacturerId } } : {};
+    
     const [total, pending, inTransit, delivered, cancelled] = await Promise.all([
-      prisma.shipment.count(),
-      prisma.shipment.count({ where: { status: 'PENDING' } }),
+      prisma.shipment.count({ where: baseWhere }),
+      prisma.shipment.count({ where: { ...baseWhere, status: 'PENDING' } }),
       prisma.shipment.count({
-        where: { status: { in: ['IN_TRANSIT', 'PICKED_UP', 'OUT_FOR_DELIVERY'] } },
+        where: { ...baseWhere, status: { in: ['IN_TRANSIT', 'PICKED_UP', 'OUT_FOR_DELIVERY'] } },
       }),
-      prisma.shipment.count({ where: { status: 'DELIVERED' } }),
-      prisma.shipment.count({ where: { status: 'CANCELLED' } }),
+      prisma.shipment.count({ where: { ...baseWhere, status: 'DELIVERED' } }),
+      prisma.shipment.count({ where: { ...baseWhere, status: 'CANCELLED' } }),
     ]);
 
     // Get recent shipments
     const recentShipments = await prisma.shipment.findMany({
+      where: baseWhere,
       take: 5,
       orderBy: { createdAt: 'desc' },
       include: {

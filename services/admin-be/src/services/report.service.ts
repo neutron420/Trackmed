@@ -624,22 +624,27 @@ export async function deleteReport(id: string, deletedBy: string) {
 }
 
 // Get report statistics
-export async function getReportStats() {
+export async function getReportStats(generatedBy?: string) {
   try {
+    // Build where clause for filtering by user
+    const baseWhere: any = generatedBy ? { generatedBy } : {};
+    
     const [total, completed, pending, failed] = await Promise.all([
-      prisma.report.count(),
-      prisma.report.count({ where: { status: 'COMPLETED' } }),
-      prisma.report.count({ where: { status: { in: ['PENDING', 'GENERATING'] } } }),
-      prisma.report.count({ where: { status: 'FAILED' } }),
+      prisma.report.count({ where: baseWhere }),
+      prisma.report.count({ where: { ...baseWhere, status: 'COMPLETED' } }),
+      prisma.report.count({ where: { ...baseWhere, status: { in: ['PENDING', 'GENERATING'] } } }),
+      prisma.report.count({ where: { ...baseWhere, status: 'FAILED' } }),
     ]);
 
     const recentReports = await prisma.report.findMany({
+      where: baseWhere,
       take: 5,
       orderBy: { createdAt: 'desc' },
     });
 
     const byType = await prisma.report.groupBy({
       by: ['type'],
+      where: baseWhere,
       _count: { id: true },
     });
 

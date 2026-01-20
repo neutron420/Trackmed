@@ -2,21 +2,74 @@ import { Router } from 'express';
 import type { Request, Response } from 'express';
 import prisma from '../config/database';
 import { createAuditTrail } from '../services/audit-trail.service';
+import { optionalAuth } from '../middleware/auth.middleware';
 
 const router = Router();
 
-/**
- * GET /api/distributor
- * Get all distributors with pagination
- */
+router.use(optionalAuth);
+
+async function getManufacturerIdFromUser(userId: string): Promise<string | null> {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user || user.role !== 'MANUFACTURER') return null;
+    
+    const manufacturer = await prisma.manufacturer.findFirst({
+      where: { email: user.email },
+    });
+    return manufacturer?.id || null;
+  } catch {
+    return null;
+  }
+}
+
 router.get('/', async (req: Request, res: Response) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
     const skip = (page - 1) * limit;
     const search = req.query.search as string;
+    const mineOnly = req.query.mine === 'true';
+    const userId = (req as any).user?.userId;
+    const userRole = (req as any).user?.role;
 
     const where: any = {};
+    
+    if (userRole === 'MANUFACTURER' && userId && mineOnly) {
+      const manufacturerId = await getManufacturerIdFromUser(userId);
+      if (manufacturerId) {
+        const shipments = await prisma.shipment.findMany({
+          where: {
+            batch: { manufacturerId },
+          },
+          select: { distributorId: true },
+          distinct: ['distributorId'],
+        });
+        const distributorIds = shipments.map(s => s.distributorId);
+        
+        const batches = await prisma.batch.findMany({
+          where: {
+            manufacturerId,
+            distributorId: { not: null },
+          },
+          select: { distributorId: true },
+          distinct: ['distributorId'],
+        });
+        const batchDistributorIds = batches.map(b => b.distributorId).filter(Boolean) as string[];
+        
+        const allDistributorIds = [...new Set([...distributorIds, ...batchDistributorIds])];
+        
+        if (allDistributorIds.length > 0) {
+          where.id = { in: allDistributorIds };
+        } else {
+          return res.json({
+            success: true,
+            data: [],
+            pagination: { page, limit, total: 0, totalPages: 0 },
+          });
+        }
+      }
+    }
+    
     if (search) {
       where.OR = [
         { name: { contains: search, mode: 'insensitive' } },
@@ -33,7 +86,7 @@ router.get('/', async (req: Request, res: Response) => {
         orderBy: { createdAt: 'desc' },
         include: {
           _count: {
-            select: { batches: true },
+            select: { batches: true, shipments: true },
           },
         },
       }),
@@ -58,10 +111,6 @@ router.get('/', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * GET /api/distributor/:id
- * Get distributor by ID
- */
 router.get('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -95,10 +144,6 @@ router.get('/:id', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * POST /api/distributor
- * Create a new distributor
- */
 router.post('/', async (req: Request, res: Response) => {
   try {
     const {
@@ -120,7 +165,6 @@ router.post('/', async (req: Request, res: Response) => {
       });
     }
 
-    // Check if license number already exists
     const existing = await prisma.distributor.findUnique({
       where: { licenseNumber },
     });
@@ -147,7 +191,6 @@ router.post('/', async (req: Request, res: Response) => {
       },
     });
 
-    // Create audit trail
     const userId = (req as any).user?.userId || 'system';
     const userRole = (req as any).user?.role || 'ADMIN';
     await createAuditTrail({
@@ -171,10 +214,6 @@ router.post('/', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * PATCH /api/distributor/:id
- * Update distributor
- */
 router.patch('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -192,7 +231,6 @@ router.patch('/:id', async (req: Request, res: Response) => {
       });
     }
 
-    // Don't allow updating license number
     delete updateData.licenseNumber;
 
     const normalizedId = Array.isArray(id) ? id[0] : id;
@@ -201,7 +239,6 @@ router.patch('/:id', async (req: Request, res: Response) => {
       data: updateData,
     });
 
-    // Create audit trail
     const userId = (req as any).user?.userId || 'system';
     const userRole = (req as any).user?.role || 'ADMIN';
     await createAuditTrail({
@@ -225,10 +262,6 @@ router.patch('/:id', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * PATCH /api/distributor/:id/verify
- * Verify/unverify distributor
- */
 router.patch('/:id/verify', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -247,7 +280,6 @@ router.patch('/:id/verify', async (req: Request, res: Response) => {
       data: { isVerified: isVerified === true },
     });
 
-    // Create audit trail
     const userId = (req as any).user?.userId || 'system';
     const userRole = (req as any).user?.role || 'ADMIN';
     await createAuditTrail({
@@ -273,10 +305,6 @@ router.patch('/:id/verify', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * PATCH /api/distributor/:id/status
- * Activate/deactivate distributor
- */
 router.patch('/:id/status', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -295,7 +323,6 @@ router.patch('/:id/status', async (req: Request, res: Response) => {
       data: { isActive: isActive === true } as any,
     });
 
-    // Create audit trail
     const userId = (req as any).user?.userId || 'system';
     const userRole = (req as any).user?.role || 'ADMIN';
     await createAuditTrail({
@@ -321,10 +348,6 @@ router.patch('/:id/status', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * DELETE /api/distributor/:id
- * Delete distributor
- */
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -358,7 +381,6 @@ router.delete('/:id', async (req: Request, res: Response) => {
       where: { id: normalizedId },
     });
 
-    // Create audit trail
     const userId = (req as any).user?.userId || 'system';
     const userRole = (req as any).user?.role || 'ADMIN';
     await createAuditTrail({

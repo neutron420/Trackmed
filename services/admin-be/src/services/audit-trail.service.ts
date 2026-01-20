@@ -51,18 +51,58 @@ export async function getAuditTrail(entityType: EntityType, entityId: string) {
 
 /**
  * Get audit trail with pagination
+ * For manufacturer users, only returns audit trails for their batches, shipments, etc.
  */
 export async function getAuditTrails(
   page: number = 1,
   limit: number = 20,
   entityType?: EntityType,
-  entityId?: string
+  entityId?: string,
+  manufacturerId?: string
 ) {
   const skip = (page - 1) * limit;
   const where: any = {};
   
   if (entityType) where.entityType = entityType;
   if (entityId) where.entityId = entityId;
+
+  // For manufacturer filtering, get their entity IDs
+  if (manufacturerId) {
+    // Get batch IDs belonging to this manufacturer
+    const batches = await prisma.batch.findMany({
+      where: { manufacturerId },
+      select: { id: true },
+    });
+    const batchIds = batches.map(b => b.id);
+
+    // Get shipment IDs for those batches
+    const shipments = await prisma.shipment.findMany({
+      where: { batchId: { in: batchIds } },
+      select: { id: true },
+    });
+    const shipmentIds = shipments.map(s => s.id);
+
+    // Get QR code IDs for those batches
+    const qrCodes = await prisma.qRCode.findMany({
+      where: { batchId: { in: batchIds } },
+      select: { id: true },
+    });
+    const qrCodeIds = qrCodes.map(q => q.id);
+
+    // Filter to only relevant entity IDs
+    const allRelevantIds = [...batchIds, ...shipmentIds, ...qrCodeIds, manufacturerId];
+    
+    where.OR = [
+      { entityId: { in: allRelevantIds } },
+      { entityType: 'MANUFACTURER', entityId: manufacturerId },
+      { 
+        metadata: {
+          path: ['manufacturerId'],
+          equals: manufacturerId,
+        }
+      },
+    ];
+  }
 
   const [rawTrails, total] = await Promise.all([
     prisma.auditTrail.findMany({

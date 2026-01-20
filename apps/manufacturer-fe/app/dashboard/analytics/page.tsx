@@ -4,19 +4,17 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
 import { Sidebar } from "../../../components/sidebar";
 import { StatCard } from "../../../components/stat-card";
-import { AreaChart, BarChart } from "../../../components/charts";
-import {
-  FiTrendingUp,
-  FiTruck,
-  FiGrid,
-  FiAlertTriangle,
-  FiRefreshCw,
-  FiMapPin,
-  FiPackage,
-} from "react-icons/fi";
+import { 
+  ChartCard, 
+  SimpleAreaChart, 
+  SimpleBarChart, 
+  SimpleDonutChart, 
+  MultiLineChart,
+  Gauge 
+} from "../../../components/charts";
 import dynamic from "next/dynamic";
 
-// Mapbox component is client-only; load dynamically to avoid SSR issues.
+// Mapbox component is client-only
 const HeatMap = dynamic(() => import("../../../components/map/heat-map").then(m => m.HeatMap), { ssr: false });
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
@@ -137,8 +135,11 @@ export default function AnalyticsPage() {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent" />
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+        <div className="text-center">
+          <div className="h-10 w-10 mx-auto animate-spin rounded-full border-4 border-emerald-200 border-t-emerald-600" />
+          <p className="mt-4 text-sm text-slate-500">Loading analytics...</p>
+        </div>
       </div>
     );
   }
@@ -146,27 +147,46 @@ export default function AnalyticsPage() {
   const summary = analytics?.summary;
   const productionTrend = analytics?.productionTrend || [];
   const salesTrend = analytics?.salesTrend || [];
-  const categoryData = analytics?.categoryDistribution || [];
   const topProducts = analytics?.topProducts || [];
   const regionalData = analytics?.regionalData || [];
   const lifecycle = analytics?.batchStats?.lifecycle;
-
-  // Use real geographic data from backend (no more hardcoded sample data)
   const geoData = analytics?.geographicData || [];
+
+  // Prepare chart data
+  const lifecycleChartData = lifecycle ? [
+    { label: "In Production", value: lifecycle.inProduction, color: "#f59e0b" },
+    { label: "In Transit", value: lifecycle.inTransit, color: "#3b82f6" },
+    { label: "At Distributor", value: lifecycle.atDistributor, color: "#8b5cf6" },
+    { label: "At Pharmacy", value: lifecycle.atPharmacy, color: "#f97316" },
+    { label: "Sold", value: lifecycle.sold, color: "#0ea371" },
+  ] : [];
+
+  const shipmentStatusData = [
+    { label: "Delivered", value: summary?.deliveredShipments || 0, color: "#0ea371" },
+    { label: "Pending", value: summary?.pendingShipments || 0, color: "#f59e0b" },
+    { label: "In Transit", value: (summary?.totalShipments || 0) - (summary?.deliveredShipments || 0) - (summary?.pendingShipments || 0), color: "#3b82f6" },
+  ];
+
+  const topProductsChartData = topProducts.slice(0, 5).map((p, i) => ({
+    label: p.name.length > 12 ? p.name.slice(0, 12) + "..." : p.name,
+    value: p.units,
+    color: ["#0ea371", "#3b82f6", "#8b5cf6", "#f59e0b", "#ef4444"][i],
+  }));
+
+  // Trend data for multi-line chart
+  const prodLabels = productionTrend.map(p => p.label);
+  const prodValues = productionTrend.map(p => p.value);
+  const shipValues = salesTrend.map(s => s.value);
+
+  // Verification rate
+  const verificationRate = summary?.verificationRate ? 
+    (typeof summary.verificationRate === 'string' ? parseFloat(summary.verificationRate) : summary.verificationRate) : 0;
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <Sidebar
-        user={user}
-        onLogout={handleLogout}
-        isCollapsed={isCollapsed}
-        onToggle={() => setIsCollapsed((prev) => !prev)}
-      />
+      <Sidebar user={user} onLogout={handleLogout} isCollapsed={isCollapsed} onToggle={() => setIsCollapsed((prev) => !prev)} />
 
-      <main
-        className="min-h-screen transition-all duration-200"
-        style={{ marginLeft: isCollapsed ? 72 : 260 }}
-      >
+      <main className="min-h-screen transition-all duration-200" style={{ marginLeft: isCollapsed ? 72 : 260 }}>
         <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur-sm">
           <div className="flex items-center justify-between px-5 py-3">
             <div>
@@ -174,23 +194,20 @@ export default function AnalyticsPage() {
               <p className="text-xs text-slate-500">Real-time insights and performance metrics</p>
             </div>
             <div className="flex items-center gap-3">
-              <button
-                onClick={fetchAnalytics}
-                className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
-              >
-                <FiRefreshCw className="h-3.5 w-3.5" />
-                Refresh
-              </button>
-              <select
-                value={dateRange}
-                onChange={(e) => setDateRange(e.target.value)}
-                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-              >
+              <select value={dateRange} onChange={(e) => setDateRange(e.target.value)}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-800 focus:border-emerald-500 focus:outline-none">
                 <option value="7d">Last 7 days</option>
                 <option value="30d">Last 30 days</option>
                 <option value="90d">Last 90 days</option>
                 <option value="1y">Last year</option>
               </select>
+              <button onClick={fetchAnalytics}
+                className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700">
+                <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Refresh
+              </button>
             </div>
           </div>
         </header>
@@ -198,231 +215,156 @@ export default function AnalyticsPage() {
         <div className="p-5">
           {/* Key Metrics */}
           <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard
-              title="Total Batches"
-              value={summary?.totalBatches?.toLocaleString() || "0"}
-              change="+12.5%"
-              changeType="positive"
-              icon={<FiTrendingUp className="h-5 w-5" />}
-            />
-            <StatCard
-              title="Units Produced"
-              value={summary?.totalUnits?.toLocaleString() || "0"}
-              change="+8.2%"
-              changeType="positive"
-              icon={<FiPackage className="h-5 w-5" />}
-            />
-            <StatCard
-              title="Verified Scans"
-              value={summary?.verifiedScans?.toLocaleString() || "0"}
-              change={`${summary?.verificationRate || 0}%`}
-              changeType="positive"
-              icon={<FiGrid className="h-5 w-5" />}
-            />
-            <StatCard
-              title="Counterfeits"
-              value={summary?.counterfeitScans?.toLocaleString() || "0"}
-              change="-5.1%"
-              changeType="positive"
-              icon={<FiAlertTriangle className="h-5 w-5" />}
-            />
+            <StatCard title="Total Batches" value={summary?.totalBatches?.toLocaleString() || "0"} change={`${analytics?.batchStats?.validBatches || 0} active`} changeType="positive"
+              icon={<svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>} />
+            <StatCard title="Units Produced" value={summary?.totalUnits?.toLocaleString() || "0"} change="Total units" changeType="neutral"
+              icon={<svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>} />
+            <StatCard title="Verified Scans" value={summary?.verifiedScans?.toLocaleString() || "0"} change={`${verificationRate.toFixed(1)}% rate`} changeType="positive"
+              icon={<svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>} />
+            <StatCard title="Total Shipments" value={summary?.totalShipments?.toLocaleString() || "0"} change={`${summary?.deliveredShipments || 0} delivered`} changeType="positive"
+              icon={<svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0" /></svg>} />
           </div>
 
-          {/* Geographic Map - Mapbox Heatmap */}
+          {/* Geographic Map */}
           <div className="mb-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="mb-3 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <FiMapPin className="h-4 w-4 text-emerald-600" />
+                <svg className="h-4 w-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                </svg>
                 <h2 className="text-sm font-semibold text-slate-900">Distribution Network Map</h2>
               </div>
               <span className="text-xs text-slate-500">{geoData.length} locations</span>
             </div>
             {geoData.length > 0 ? (
-              <HeatMap points={geoData} height={420} />
+              <>
+                <HeatMap points={geoData} height={380} />
+                <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                  {geoData.slice(0, 8).map((loc) => (
+                    <div key={loc.id} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <div className="h-2 w-2 rounded-full bg-emerald-500" />
+                        <span className="text-xs font-medium text-slate-700">{loc.state}</span>
+                      </div>
+                      <span className="text-xs font-semibold text-emerald-600">{loc.orders}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
             ) : (
               <div className="flex h-[420px] flex-col items-center justify-center rounded-lg bg-slate-50">
-                <FiMapPin className="mb-3 h-12 w-12 text-slate-300" />
+                <svg className="mb-3 h-12 w-12 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                </svg>
                 <p className="text-sm font-medium text-slate-600">No distribution data yet</p>
-                <p className="mt-1 text-xs text-slate-400">
-                  Add distributors and create shipments to see locations on the map
-                </p>
+                <p className="mt-1 text-xs text-slate-400">Add distributors and create shipments to see locations</p>
               </div>
             )}
           </div>
 
-          {/* Charts Grid */}
-          <div className="mb-5 grid gap-5 lg:grid-cols-2">
-            {/* Production Trend */}
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="mb-3 flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-slate-900">Production Trend</h2>
-                <span className="text-xs text-slate-500">Units/Day</span>
-              </div>
-              {productionTrend.length > 0 ? (
-                <AreaChart data={productionTrend} color="emerald" height={140} />
-              ) : (
-                <div className="flex h-[140px] items-center justify-center text-sm text-slate-400">
-                  Create batches to see production trend
-                </div>
-              )}
+          {/* Charts Row 1 - Trends */}
+          <div className="mb-5 grid gap-5 lg:grid-cols-3">
+            <div className="lg:col-span-2">
+              <ChartCard title="Activity Trends" subtitle="Production & Shipments over time">
+                {prodLabels.length > 1 ? (
+                  <MultiLineChart
+                    series={[
+                      { name: "Production", data: prodValues, color: "#0ea371" },
+                      { name: "Shipments", data: shipValues, color: "#3b82f6" },
+                    ]}
+                    labels={prodLabels}
+                    height={200}
+                  />
+                ) : (
+                  <div className="flex h-[200px] items-center justify-center text-sm text-slate-400">Create batches and shipments to see trends</div>
+                )}
+              </ChartCard>
             </div>
-
-            {/* Shipment Trend */}
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="mb-3 flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-slate-900">Shipment Trend</h2>
-                <span className="text-xs text-slate-500">Shipments/Day</span>
-              </div>
-              {salesTrend.length > 0 ? (
-                <AreaChart data={salesTrend} color="blue" height={140} />
-              ) : (
-                <div className="flex h-[140px] items-center justify-center text-sm text-slate-400">
-                  Create shipments to see trend
+            <ChartCard title="Verification Rate" subtitle="QR scan success rate">
+              <div className="flex flex-col items-center justify-center py-4">
+                <Gauge value={verificationRate} max={100} label="Verified Scans" color="#0ea371" size={140} />
+                <div className="mt-4 grid grid-cols-2 gap-4 w-full text-center">
+                  <div>
+                    <p className="text-lg font-bold text-emerald-600">{summary?.verifiedScans || 0}</p>
+                    <p className="text-xs text-slate-500">Verified</p>
+                  </div>
+                  <div>
+                    <p className="text-lg font-bold text-red-600">{summary?.counterfeitScans || 0}</p>
+                    <p className="text-xs text-slate-500">Failed</p>
+                  </div>
                 </div>
-              )}
-            </div>
+              </div>
+            </ChartCard>
           </div>
 
-          {/* Batch Lifecycle Status */}
-          {lifecycle && (
-            <div className="mb-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <h2 className="mb-3 text-sm font-semibold text-slate-900">Batch Lifecycle Status</h2>
-              <div className="grid gap-3 sm:grid-cols-5">
-                {[
-                  { label: "In Production", value: lifecycle.inProduction, color: "bg-yellow-500" },
-                  { label: "In Transit", value: lifecycle.inTransit, color: "bg-blue-500" },
-                  { label: "At Distributor", value: lifecycle.atDistributor, color: "bg-purple-500" },
-                  { label: "At Pharmacy", value: lifecycle.atPharmacy, color: "bg-orange-500" },
-                  { label: "Sold", value: lifecycle.sold, color: "bg-emerald-500" },
-                ].map((item) => (
-                  <div key={item.label} className="rounded-lg bg-slate-50 p-3 text-center">
-                    <div className={`mx-auto mb-2 h-2 w-12 rounded-full ${item.color}`} />
-                    <p className="text-lg font-bold text-slate-900">{item.value}</p>
-                    <p className="text-xs text-slate-500">{item.label}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="grid gap-5 lg:grid-cols-3">
-            {/* Category Distribution */}
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <h2 className="mb-3 text-sm font-semibold text-slate-900">Product Categories</h2>
-              {categoryData.length > 0 ? (
-                <BarChart data={categoryData} color="emerald" height={140} />
+          {/* Charts Row 2 - Donut Charts */}
+          <div className="mb-5 grid gap-5 lg:grid-cols-3">
+            <ChartCard title="Batch Lifecycle" subtitle="Current status distribution">
+              {lifecycleChartData.some(d => d.value > 0) ? (
+                <SimpleDonutChart data={lifecycleChartData} size={110} showTotal />
               ) : (
-                <div className="flex h-[140px] items-center justify-center text-sm text-slate-400">
-                  Add products to see categories
-                </div>
+                <div className="flex h-32 items-center justify-center text-sm text-slate-400">No batch data yet</div>
               )}
-            </div>
-
-            {/* Top Products */}
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm lg:col-span-2">
-              <h2 className="mb-3 text-sm font-semibold text-slate-900">Top Products</h2>
-              <div className="space-y-2">
-                {topProducts.length > 0 ? (
-                  topProducts.map((product) => (
-                    <div
-                      key={product.name}
-                      className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2"
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100 text-xs font-semibold text-emerald-700">
-                          {product.rank}
-                        </span>
-                        <span className="text-xs font-medium text-slate-800">{product.name}</span>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs text-slate-600">{product.units.toLocaleString()} units</span>
-                        <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-xs font-medium text-emerald-700">
-                          {product.growth}
-                        </span>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-center text-xs text-slate-500 py-4">No product data available</p>
-                )}
-              </div>
-            </div>
+            </ChartCard>
+            <ChartCard title="Shipment Status" subtitle="Current distribution">
+              <SimpleDonutChart data={shipmentStatusData} size={110} showTotal />
+            </ChartCard>
+            <ChartCard title="Top Products" subtitle="By production volume">
+              {topProductsChartData.length > 0 ? (
+                <SimpleBarChart data={topProductsChartData} />
+              ) : (
+                <div className="flex h-32 items-center justify-center text-sm text-slate-400">Add products to see data</div>
+              )}
+            </ChartCard>
           </div>
 
           {/* Regional Performance */}
-          <div className="mt-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="mb-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <h2 className="mb-3 text-sm font-semibold text-slate-900">Regional Performance</h2>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {regionalData.length > 0 ? (
-                regionalData.map((r) => (
-                  <div key={r.region} className="rounded-lg bg-slate-50 p-3">
-                    <h3 className="text-xs font-semibold text-slate-700">{r.region} Region</h3>
-                    <div className="mt-2 flex items-end justify-between">
-                      <div>
-                        <p className="text-lg font-bold text-slate-900">{r.orders}</p>
-                        <p className="text-xs text-slate-500">Orders</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm font-semibold text-emerald-600">{r.revenue}</p>
-                        <p className="text-xs text-slate-500">{r.batches} batches</p>
-                      </div>
+              {(regionalData.length > 0 ? regionalData : [
+                { region: "North", orders: 0, batches: 0, revenue: "₹0" },
+                { region: "South", orders: 0, batches: 0, revenue: "₹0" },
+                { region: "East", orders: 0, batches: 0, revenue: "₹0" },
+                { region: "West", orders: 0, batches: 0, revenue: "₹0" },
+              ]).map((r) => (
+                <div key={r.region} className="rounded-lg bg-slate-50 p-3">
+                  <h3 className="text-xs font-semibold text-slate-700">{r.region} Region</h3>
+                  <div className="mt-2 flex items-end justify-between">
+                    <div>
+                      <p className="text-lg font-bold text-slate-900">{r.orders}</p>
+                      <p className="text-xs text-slate-500">Orders</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-semibold text-emerald-600">{r.revenue}</p>
+                      <p className="text-xs text-slate-500">{r.batches} batches</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Top Products List */}
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <h2 className="mb-3 text-sm font-semibold text-slate-900">Product Leaderboard</h2>
+            <div className="space-y-2">
+              {topProducts.length > 0 ? (
+                topProducts.map((product) => (
+                  <div key={product.name} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100 text-xs font-semibold text-emerald-700">{product.rank}</span>
+                      <span className="text-xs font-medium text-slate-800">{product.name}</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-slate-600">{product.units.toLocaleString()} units</span>
+                      <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-xs font-medium text-emerald-700">{product.growth}</span>
                     </div>
                   </div>
                 ))
               ) : (
-                ["North", "South", "East", "West"].map((region) => (
-                  <div key={region} className="rounded-lg bg-slate-50 p-3">
-                    <h3 className="text-xs font-semibold text-slate-700">{region} Region</h3>
-                    <div className="mt-2 flex items-end justify-between">
-                      <div>
-                        <p className="text-lg font-bold text-slate-900">0</p>
-                        <p className="text-xs text-slate-500">Orders</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm font-semibold text-emerald-600">₹0</p>
-                        <p className="text-xs text-slate-500">0 batches</p>
-                      </div>
-                    </div>
-                  </div>
-                ))
+                <p className="text-center text-xs text-slate-500 py-4">No product data available</p>
               )}
-            </div>
-          </div>
-
-          {/* Shipment Summary */}
-          <div className="mt-5 grid gap-3 sm:grid-cols-3">
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100">
-                  <FiTruck className="h-5 w-5 text-emerald-600" />
-                </div>
-                <div>
-                  <p className="text-xs text-slate-500">Total Shipments</p>
-                  <p className="text-lg font-bold text-slate-900">{summary?.totalShipments || 0}</p>
-                </div>
-              </div>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100">
-                  <FiPackage className="h-5 w-5 text-blue-600" />
-                </div>
-                <div>
-                  <p className="text-xs text-slate-500">Delivered</p>
-                  <p className="text-lg font-bold text-slate-900">{summary?.deliveredShipments || 0}</p>
-                </div>
-              </div>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100">
-                  <FiTruck className="h-5 w-5 text-amber-600" />
-                </div>
-                <div>
-                  <p className="text-xs text-slate-500">Pending</p>
-                  <p className="text-lg font-bold text-slate-900">{summary?.pendingShipments || 0}</p>
-                </div>
-              </div>
             </div>
           </div>
         </div>
