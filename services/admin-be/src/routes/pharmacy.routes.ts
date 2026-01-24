@@ -218,9 +218,12 @@ router.patch('/:id', async (req: Request, res: Response) => {
     if (phone !== undefined) updateData.phone = phone;
     if (email !== undefined) updateData.email = email;
     if (gstNumber !== undefined) updateData.gstNumber = gstNumber;
+    // Allow null to clear image, or string to set image
     if (imageUrl !== undefined) updateData.imageUrl = imageUrl;
     if (isVerified !== undefined) updateData.isVerified = isVerified;
     if (isActive !== undefined) updateData.isActive = isActive;
+    
+    console.log('Updating pharmacy:', pharmacyId, 'with data:', updateData);
 
     const pharmacy = await prisma.pharmacy.update({
       where: { id: pharmacyId },

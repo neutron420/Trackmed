@@ -90,8 +90,9 @@ export default function PharmaciesPage() {
   const [olaResults, setOlaResults] = useState<OlaPlace[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
-  // Image error state for view modal
-  const [imageError, setImageError] = useState<string | null>(null);
+  // Image error state for view modal - use Map to track errors per pharmacy
+  const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
+  const [showImageLightbox, setShowImageLightbox] = useState(false);
 
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -101,6 +102,17 @@ export default function PharmaciesPage() {
   const addModalMapContainerRef = useRef<HTMLDivElement>(null);
   const addModalMapRef = useRef<mapboxgl.Map | null>(null);
   const addModalMarkerRef = useRef<mapboxgl.Marker | null>(null);
+
+  // Helper to validate image URL
+  const isValidImageUrl = (url: string | undefined | null): url is string => {
+    if (!url) return false;
+    try {
+      const urlObj = new URL(url);
+      return urlObj.protocol === 'http:' || urlObj.protocol === 'https:';
+    } catch {
+      return false;
+    }
+  };
 
   const fetchPharmacies = useCallback(async () => {
     const token = localStorage.getItem("token");
@@ -401,15 +413,22 @@ export default function PharmaciesPage() {
 
   // Upload image to R2
   const uploadImage = async (): Promise<string | null> => {
-    if (!imageFile) return null;
+    if (!imageFile) {
+      console.log("No image file to upload");
+      return null;
+    }
 
     const token = localStorage.getItem("token");
-    if (!token) return null;
+    if (!token) {
+      console.error("No token found for image upload");
+      return null;
+    }
 
     const formData = new FormData();
     formData.append("image", imageFile);
 
     try {
+      console.log("Uploading image to:", `${API_BASE}/api/upload/image?folder=pharmacies`);
       const res = await fetch(
         `${API_BASE}/api/upload/image?folder=pharmacies`,
         {
@@ -419,8 +438,12 @@ export default function PharmaciesPage() {
         },
       );
       const data = await res.json();
-      if (data.success) {
+      console.log("Upload response:", data);
+      if (data.success && data.data?.url) {
+        console.log("Image uploaded successfully, URL:", data.data.url);
         return data.data.url;
+      } else {
+        console.error("Upload failed:", data.error || "Unknown error");
       }
     } catch (error) {
       console.error("Image upload failed:", error);
@@ -482,8 +505,20 @@ export default function PharmaciesPage() {
     try {
       let imageUrl = editingPharmacy.imageUrl;
       if (imageFile) {
-        imageUrl = (await uploadImage()) || imageUrl;
+        console.log("Uploading new image for pharmacy:", editingPharmacy.id);
+        const uploadedUrl = await uploadImage();
+        if (uploadedUrl) {
+          imageUrl = uploadedUrl;
+          console.log("Image uploaded successfully:", uploadedUrl);
+        } else {
+          console.error("Image upload failed, keeping existing imageUrl:", imageUrl);
+          alert("Failed to upload image. Please try again.");
+          setIsSubmitting(false);
+          return;
+        }
       }
+
+      console.log("Updating pharmacy with imageUrl:", imageUrl);
 
       const res = await fetch(
         `${API_BASE}/api/pharmacy/${editingPharmacy.id}`,
@@ -501,18 +536,22 @@ export default function PharmaciesPage() {
             phone: formData.phone,
             email: formData.email,
             gstNumber: formData.gstNumber,
-            imageUrl,
+            imageUrl: imageUrl || null, // Explicitly send null if no image
           }),
         },
       );
 
       const data = await res.json();
+      console.log("Update response:", data);
+      
       if (data.success) {
+        console.log("Pharmacy updated successfully:", data.data);
         setShowEditModal(false);
         setEditingPharmacy(null);
         resetForm();
         fetchPharmacies();
       } else {
+        console.error("Update failed:", data.error);
         alert(data.error || "Failed to update pharmacy");
       }
     } catch (error) {
@@ -558,6 +597,11 @@ export default function PharmaciesPage() {
 
   // Open edit modal
   const openEditModal = (pharmacy: Pharmacy) => {
+    console.log("Opening edit modal for pharmacy:", {
+      id: pharmacy.id,
+      name: pharmacy.name,
+      imageUrl: pharmacy.imageUrl,
+    });
     setEditingPharmacy(pharmacy);
     setFormData({
       name: pharmacy.name || "",
@@ -570,13 +614,20 @@ export default function PharmaciesPage() {
       gstNumber: pharmacy.gstNumber || "",
     });
     setImagePreview(pharmacy.imageUrl || null);
+    setImageFile(null); // Reset image file when opening modal
     setShowEditModal(true);
   };
 
   // Open view modal
   const openViewModal = (pharmacy: Pharmacy) => {
     setViewingPharmacy(pharmacy);
-    setImageError(null); // Reset error state when opening new modal
+    // Don't reset errors - let images retry if URL is valid
+    console.log("Opening view modal for pharmacy:", {
+      id: pharmacy.id,
+      name: pharmacy.name,
+      imageUrl: pharmacy.imageUrl,
+      hasImageUrl: !!pharmacy.imageUrl,
+    });
     setShowViewModal(true);
   };
 
@@ -1595,104 +1646,74 @@ export default function PharmaciesPage() {
 
       {/* View Modal */}
       {showViewModal && viewingPharmacy && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-900/60 backdrop-blur-sm p-4 transition-all duration-300">
-          <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden transform transition-all">
-            {/* Header Background */}
-            <div className="relative h-36 bg-gradient-to-br from-emerald-500 to-teal-600">
-              <button
-                onClick={() => setShowViewModal(false)}
-                className="absolute top-4 right-4 p-2 bg-white/20 hover:bg-white/30 text-white rounded-full backdrop-blur-md transition-colors"
-              >
-                <svg
-                  className="h-5 w-5"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
-            </div>
-
-            {/* Profile Section */}
-            <div className="relative px-6 pb-8">
-              <div className="flex flex-col items-center">
-                {viewingPharmacy.imageUrl &&
-                imageError !== viewingPharmacy.id ? (
-                  <div className="relative -mt-16 h-32 w-32 rounded-2xl border-[6px] border-white shadow-lg bg-white overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-start justify-between mb-6">
+              <div className="flex items-center gap-3">
+                {viewingPharmacy.imageUrl && 
+                 isValidImageUrl(viewingPharmacy.imageUrl) && 
+                 !imageErrors.has(viewingPharmacy.id) ? (
+                  <div 
+                    className="relative h-16 w-16 rounded-xl overflow-hidden cursor-pointer hover:opacity-80 transition-opacity bg-slate-100"
+                    onClick={() => {
+                      if (!imageErrors.has(viewingPharmacy.id)) {
+                        setShowImageLightbox(true);
+                      }
+                    }}
+                  >
+                    {/* Try Next.js Image first, fallback to regular img if it fails */}
                     <Image
                       src={viewingPharmacy.imageUrl}
                       alt={viewingPharmacy.name}
                       fill
-                      sizes="128px"
+                      sizes="64px"
                       className="object-cover"
-                      onError={() => {
-                        setImageError(viewingPharmacy.id);
+                      unoptimized
+                      onError={(e) => {
+                        console.error("Image load error for pharmacy:", viewingPharmacy.id, viewingPharmacy.imageUrl);
+                        // Try fallback with regular img tag
+                        const target = e.target as HTMLImageElement;
+                        const parent = target.parentElement;
+                        if (parent) {
+                          // Hide Next.js Image
+                          target.style.display = 'none';
+                          // Check if fallback img already exists
+                          if (!parent.querySelector('img.fallback-img') && viewingPharmacy.imageUrl) {
+                            const fallbackImg = document.createElement('img');
+                            fallbackImg.src = viewingPharmacy.imageUrl;
+                            fallbackImg.alt = viewingPharmacy.name;
+                            fallbackImg.className = 'fallback-img absolute inset-0 w-full h-full object-cover';
+                            fallbackImg.onerror = () => {
+                              // If fallback also fails, mark as error
+                              setImageErrors(prev => new Set(prev).add(viewingPharmacy.id));
+                              fallbackImg.style.display = 'none';
+                            };
+                            parent.appendChild(fallbackImg);
+                          }
+                        }
                       }}
                       onLoad={() => {
-                        if (imageError === viewingPharmacy.id) {
-                          setImageError(null);
-                        }
+                        // Remove from errors if it loads successfully
+                        setImageErrors(prev => {
+                          const newSet = new Set(prev);
+                          newSet.delete(viewingPharmacy.id);
+                          return newSet;
+                        });
                       }}
                     />
                   </div>
                 ) : (
-                  <div className="relative -mt-16 flex h-32 w-32 items-center justify-center rounded-2xl border-[6px] border-white bg-white shadow-lg text-4xl font-bold text-emerald-600">
+                  <div className={`flex h-16 w-16 items-center justify-center rounded-xl font-bold text-lg ${
+                    viewingPharmacy.isActive === false ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"
+                  }`}>
                     {viewingPharmacy.name[0].toUpperCase()}
                   </div>
                 )}
-
-                <div className="mt-4 text-center">
-                  <h2 className="text-2xl font-bold text-slate-900">
-                    {viewingPharmacy.name}
-                  </h2>
-                  <div className="flex items-center justify-center gap-2 mt-1 text-sm font-medium text-slate-500">
-                    <svg
-                      className="h-4 w-4"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={1.5}
-                        d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
-                      />
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={1.5}
-                        d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
-                      />
-                    </svg>
-                    {viewingPharmacy.city}, {viewingPharmacy.state}
-                  </div>
-                </div>
-              </div>
-
-              {/* Status Grid */}
-              <div className="mt-8 grid grid-cols-2 gap-4">
-                <div className="rounded-2xl bg-slate-50 p-4 text-center border border-slate-100">
-                  <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                    License Number
-                  </p>
-                  <p className="mt-1 font-semibold text-slate-900">
-                    {viewingPharmacy.licenseNumber || "—"}
-                  </p>
-                </div>
-                <div className="rounded-2xl bg-slate-50 p-4 text-center border border-slate-100">
-                  <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                    Status
-                  </p>
-                  <div className="mt-1 flex justify-center">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">{viewingPharmacy.name}</h2>
+                  <div className="flex gap-2 mt-1">
                     <span
-                      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-sm font-semibold ${
+                      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
                         viewingPharmacy.isActive !== false
                           ? "bg-emerald-100 text-emerald-700"
                           : "bg-red-100 text-red-700"
@@ -1705,118 +1726,127 @@ export default function PharmaciesPage() {
                             : "bg-red-500"
                         }`}
                       />
-                      {viewingPharmacy.isActive !== false
-                        ? "Active"
-                        : "Inactive"}
+                      {viewingPharmacy.isActive !== false ? "Active" : "Inactive"}
                     </span>
                   </div>
                 </div>
               </div>
+              <button 
+                onClick={() => setShowViewModal(false)}
+                className="p-1 text-slate-400 hover:text-slate-600"
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
 
-              {/* Contact Info */}
-              <div className="mt-8 space-y-4">
-                <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900 uppercase tracking-wide">
-                  <svg
-                    className="h-4 w-4 text-emerald-500"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                  Details
-                </h3>
-                <div className="space-y-3">
-                  <div className="flex items-center gap-4 rounded-xl border border-transparent p-3 hover:bg-slate-50 hover:border-slate-100 transition-colors">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
-                      <svg
-                        className="h-5 w-5"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={1.5}
-                          d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"
-                        />
-                      </svg>
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-slate-500">
-                        Phone
-                      </p>
-                      <p className="text-sm font-medium text-slate-900">
-                        {viewingPharmacy.phone || "Not provided"}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-4 rounded-xl border border-transparent p-3 hover:bg-slate-50 hover:border-slate-100 transition-colors">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-purple-50 text-purple-600">
-                      <svg
-                        className="h-5 w-5"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={1.5}
-                          d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                        />
-                      </svg>
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-slate-500">
-                        Email
-                      </p>
-                      <p className="text-sm font-medium text-slate-900">
-                        {viewingPharmacy.email || "Not provided"}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-4 rounded-xl border border-transparent p-3 hover:bg-slate-50 hover:border-slate-100 transition-colors">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-orange-50 text-orange-600">
-                      <svg
-                        className="h-5 w-5"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={1.5}
-                          d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
-                        />
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={1.5}
-                          d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
-                        />
-                      </svg>
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-slate-500">
-                        Address
-                      </p>
-                      <p className="text-sm font-medium text-slate-900">
-                        {viewingPharmacy.address || "Not provided"}
-                      </p>
-                    </div>
-                  </div>
-                </div>
+            <div className="space-y-3 mb-6">
+              <div className="rounded-lg bg-slate-50 p-3">
+                <p className="text-xs text-slate-500">Location</p>
+                <p className="font-medium text-slate-800">
+                  {viewingPharmacy.city && viewingPharmacy.state 
+                    ? `${viewingPharmacy.city}, ${viewingPharmacy.state}`
+                    : viewingPharmacy.city || viewingPharmacy.state || "—"}
+                </p>
               </div>
+              <div className="rounded-lg bg-slate-50 p-3">
+                <p className="text-xs text-slate-500">License Number</p>
+                <p className="font-medium text-slate-800">{viewingPharmacy.licenseNumber || "—"}</p>
+              </div>
+              <div className="rounded-lg bg-slate-50 p-3">
+                <p className="text-xs text-slate-500">Email</p>
+                <p className="font-medium text-slate-800">{viewingPharmacy.email || "—"}</p>
+              </div>
+              <div className="rounded-lg bg-slate-50 p-3">
+                <p className="text-xs text-slate-500">Phone</p>
+                <p className="font-medium text-slate-800">{viewingPharmacy.phone || "—"}</p>
+              </div>
+              <div className="rounded-lg bg-slate-50 p-3">
+                <p className="text-xs text-slate-500">Address</p>
+                <p className="font-medium text-slate-800">{viewingPharmacy.address || "—"}</p>
+              </div>
+              {viewingPharmacy.gstNumber && (
+                <div className="rounded-lg bg-slate-50 p-3">
+                  <p className="text-xs text-slate-500">GST Number</p>
+                  <p className="font-medium text-slate-800">{viewingPharmacy.gstNumber}</p>
+                </div>
+              )}
+              <div className="rounded-lg bg-slate-50 p-3">
+                <p className="text-xs text-slate-500">Registered On</p>
+                <p className="font-medium text-slate-800">{new Date(viewingPharmacy.createdAt).toLocaleDateString()}</p>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  openEditModal(viewingPharmacy);
+                  setShowViewModal(false);
+                }}
+                className="flex-1 rounded-xl bg-blue-600 py-2.5 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+              >
+                Edit
+              </button>
+              <button
+                onClick={() => setShowViewModal(false)}
+                className="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Image Lightbox */}
+      {showImageLightbox && viewingPharmacy?.imageUrl && !imageErrors.has(viewingPharmacy.id) && (
+        <div 
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+          onClick={() => setShowImageLightbox(false)}
+        >
+          <div className="relative max-w-4xl max-h-[90vh] w-full h-full flex items-center justify-center">
+            <button
+              onClick={() => setShowImageLightbox(false)}
+              className="absolute top-4 right-4 p-2 bg-white/20 hover:bg-white/30 text-white rounded-full backdrop-blur-md transition-colors z-10"
+            >
+              <svg
+                className="h-6 w-6"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+            <div 
+              className="relative w-full h-full max-w-full max-h-full"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Use regular img tag for lightbox to avoid Next.js Image restrictions */}
+              <img
+                src={viewingPharmacy.imageUrl}
+                alt={viewingPharmacy.name}
+                className="w-full h-full object-contain"
+                onError={(e) => {
+                  console.error("Lightbox image load error:", viewingPharmacy.imageUrl);
+                  const target = e.target as HTMLImageElement;
+                  target.style.display = 'none';
+                  // Show error message
+                  const parent = target.parentElement;
+                  if (parent && !parent.querySelector('.image-error')) {
+                    const errorDiv = document.createElement('div');
+                    errorDiv.className = 'image-error flex items-center justify-center h-full text-white';
+                    errorDiv.textContent = 'Failed to load image';
+                    parent.appendChild(errorDiv);
+                  }
+                }}
+              />
             </div>
           </div>
         </div>
