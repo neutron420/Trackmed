@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import type { Request, Response } from 'express';
+import { verifyToken } from '../middleware/auth.middleware';
 import {
   getAnalytics,
   generateScanStatistics,
@@ -13,14 +14,16 @@ const router = Router();
 /**
  * GET /api/analytics/dashboard
  * Get comprehensive dashboard analytics
+ * Requires authentication
  */
-router.get('/dashboard', async (req: Request, res: Response) => {
+router.get('/dashboard', verifyToken, async (req: Request, res: Response) => {
   try {
     const days = req.query.days ? parseInt(req.query.days as string) : 30;
     const result = await getDashboardAnalytics(days);
 
     res.json(result);
   } catch (error: any) {
+    console.error('Error in /api/analytics/dashboard:', error);
     res.status(500).json({
       success: false,
       error: error.message || 'Internal server error',

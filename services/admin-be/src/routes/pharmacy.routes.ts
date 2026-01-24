@@ -111,6 +111,7 @@ router.post('/', async (req: Request, res: Response) => {
       phone,
       email,
       gstNumber,
+      imageUrl,
     } = req.body;
 
     if (!name || !licenseNumber || !address) {
@@ -143,6 +144,7 @@ router.post('/', async (req: Request, res: Response) => {
         phone,
         email,
         gstNumber,
+        imageUrl,
         isVerified: false,
       },
     });
@@ -178,7 +180,6 @@ router.post('/', async (req: Request, res: Response) => {
 router.patch('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const updateData = req.body;
     const pharmacyId = Array.isArray(id) ? id[0] : id;
 
     const existing = await prisma.pharmacy.findUnique({
@@ -192,8 +193,34 @@ router.patch('/:id', async (req: Request, res: Response) => {
       });
     }
 
-    // Don't allow updating license number
-    delete updateData.licenseNumber;
+    // Extract only valid fields for update (exclude licenseNumber)
+    const {
+      name,
+      address,
+      city,
+      state,
+      country,
+      phone,
+      email,
+      gstNumber,
+      imageUrl,
+      isVerified,
+      isActive,
+    } = req.body;
+
+    // Build update data with only defined fields
+    const updateData: any = {};
+    if (name !== undefined) updateData.name = name;
+    if (address !== undefined) updateData.address = address;
+    if (city !== undefined) updateData.city = city;
+    if (state !== undefined) updateData.state = state;
+    if (country !== undefined) updateData.country = country;
+    if (phone !== undefined) updateData.phone = phone;
+    if (email !== undefined) updateData.email = email;
+    if (gstNumber !== undefined) updateData.gstNumber = gstNumber;
+    if (imageUrl !== undefined) updateData.imageUrl = imageUrl;
+    if (isVerified !== undefined) updateData.isVerified = isVerified;
+    if (isActive !== undefined) updateData.isActive = isActive;
 
     const pharmacy = await prisma.pharmacy.update({
       where: { id: pharmacyId },

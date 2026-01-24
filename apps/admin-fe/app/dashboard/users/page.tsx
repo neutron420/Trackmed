@@ -24,6 +24,7 @@ export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
+  const [pharmacyCount, setPharmacyCount] = useState(0);
 
   const fetchUsers = useCallback(async () => {
     const token = localStorage.getItem("token");
@@ -46,6 +47,23 @@ export default function UsersPage() {
     }
   }, [search, roleFilter]);
 
+  const fetchPharmacyCount = useCallback(async () => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    try {
+      const res = await fetch(`${API_BASE}/api/pharmacy?limit=100`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.success) {
+        setPharmacyCount(data.pagination?.total || data.data?.length || 0);
+      }
+    } catch (error) {
+      console.error("Failed to fetch pharmacy count:", error);
+    }
+  }, []);
+
   useEffect(() => {
     const token = localStorage.getItem("token");
     const storedUser = localStorage.getItem("user");
@@ -62,11 +80,11 @@ export default function UsersPage() {
         return;
       }
       setUser(parsedUser);
-      fetchUsers().finally(() => setIsLoading(false));
+      Promise.all([fetchUsers(), fetchPharmacyCount()]).finally(() => setIsLoading(false));
     } catch {
       router.push("/login");
     }
-  }, [router, fetchUsers]);
+  }, [router, fetchUsers, fetchPharmacyCount]);
 
   const handleLogout = () => {
     localStorage.removeItem("token");
@@ -146,7 +164,10 @@ export default function UsersPage() {
               <option value="PHARMACY">Pharmacy</option>
             </select>
             <button
-              onClick={() => fetchUsers()}
+              onClick={() => {
+                fetchUsers();
+                fetchPharmacyCount();
+              }}
               className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700"
             >
               <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -160,7 +181,7 @@ export default function UsersPage() {
           <div className="mb-6 grid gap-4 sm:grid-cols-4">
             <div className="rounded-xl border border-slate-200 bg-white p-4">
               <p className="text-xs text-slate-500">Total Users</p>
-              <p className="text-2xl font-bold text-slate-900">{users.length}</p>
+              <p className="text-2xl font-bold text-slate-900">{users.length + pharmacyCount}</p>
             </div>
             <div className="rounded-xl border border-slate-200 bg-white p-4">
               <p className="text-xs text-slate-500">Manufacturers</p>
@@ -172,7 +193,7 @@ export default function UsersPage() {
             </div>
             <div className="rounded-xl border border-slate-200 bg-white p-4">
               <p className="text-xs text-slate-500">Pharmacies</p>
-              <p className="text-2xl font-bold text-blue-600">{users.filter(u => u.role === "PHARMACY").length}</p>
+              <p className="text-2xl font-bold text-blue-600">{pharmacyCount}</p>
             </div>
           </div>
 

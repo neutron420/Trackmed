@@ -247,177 +247,217 @@ export async function getFraudStatistics(startDate: Date, endDate: Date) {
  * Get comprehensive dashboard analytics
  */
 export async function getDashboardAnalytics(days: number = 30) {
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - days);
-  const endDate = new Date();
+  try {
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+    const endDate = new Date();
 
-  // Get batch statistics
-  const batchStats = await generateBatchStatistics();
+    // Get batch statistics (all-time)
+    const batchStats = await generateBatchStatistics().catch((error) => {
+      console.error('Error getting batch stats:', error);
+      return { totalBatches: 0, validBatches: 0, recalledBatches: 0, expiredBatches: 0, lifecycle: {} };
+    });
 
-  // Get scan statistics
-  const scanStats = await prisma.scanLog.groupBy({
-    by: ['createdAt'],
-    where: {
-      createdAt: {
-        gte: startDate,
-        lte: endDate,
+    // Get total scans and verification stats (all-time for summary, date range for trends)
+    const [totalScans, verifiedScans, counterfeitScans] = await Promise.all([
+      prisma.scanLog.count().catch(() => 0),
+      prisma.scanLog.count({ where: { blockchainVerified: true } }).catch(() => 0),
+      prisma.scanLog.count({ where: { blockchainVerified: false } }).catch(() => 0),
+    ]);
+
+    // Get shipment stats (all-time for summary)
+    const [totalShipments, deliveredShipments, pendingShipments, inTransitShipments] = await Promise.all([
+      prisma.shipment.count().catch(() => 0),
+      prisma.shipment.count({ where: { status: 'DELIVERED' } }).catch(() => 0),
+      prisma.shipment.count({ where: { status: 'PENDING' } }).catch(() => 0),
+      prisma.shipment.count({ 
+        where: { status: { in: ['IN_TRANSIT', 'PICKED_UP', 'OUT_FOR_DELIVERY'] } } 
+      }).catch(() => 0),
+    ]);
+
+    // Get total units from batches (all-time)
+    const totalUnits = await prisma.batch.aggregate({
+      _sum: { quantity: true },
+    }).catch(() => ({ _sum: { quantity: null } }));
+
+    // Get production trend (batches created per day) - for the date range
+    const productionTrend = await getProductionTrend(startDate, endDate).catch(() => []);
+
+    // Get sales/shipment trend - for the date range
+    const salesTrend = await getSalesTrend(startDate, endDate).catch(() => []);
+
+    // Get top products
+    const topProducts = await getTopProducts().catch(() => []);
+
+    // Get regional data
+    const regionalData = await getRegionalData().catch(() => []);
+
+    // Get category distribution
+    const categoryDistribution = await getCategoryDistribution().catch(() => []);
+
+    // Get geographic order data
+    const geographicData = await getGeographicOrderData().catch(() => []);
+
+    return {
+      success: true,
+      data: {
+        summary: {
+          totalBatches: batchStats.totalBatches || 0,
+          totalUnits: totalUnits._sum.quantity ? Number(totalUnits._sum.quantity) : 0,
+          totalScans: totalScans || 0,
+          verifiedScans: verifiedScans || 0,
+          counterfeitScans: counterfeitScans || 0,
+          verificationRate: totalScans > 0 ? ((verifiedScans / totalScans) * 100).toFixed(1) : '0',
+          totalShipments: totalShipments || 0,
+          deliveredShipments: deliveredShipments || 0,
+          pendingShipments: pendingShipments || 0,
+          inTransitShipments: inTransitShipments || 0,
+        },
+        batchStats: {
+          totalBatches: batchStats.totalBatches || 0,
+          activeBatches: batchStats.validBatches || 0,
+          recalledBatches: batchStats.recalledBatches || 0,
+          expiredBatches: batchStats.expiredBatches || 0,
+        },
+        productionTrend: productionTrend || [],
+        salesTrend: salesTrend || [],
+        topProducts: topProducts || [],
+        regionalData: regionalData || [],
+        categoryDistribution: categoryDistribution || [],
+        geographicData: geographicData || [],
       },
-    },
-    _count: { id: true },
-  });
-
-  // Get total scans and verification stats
-  const [totalScans, verifiedScans, counterfeitScans] = await Promise.all([
-    prisma.scanLog.count({
-      where: { createdAt: { gte: startDate, lte: endDate } },
-    }),
-    prisma.scanLog.count({
-      where: { createdAt: { gte: startDate, lte: endDate }, blockchainVerified: true },
-    }),
-    prisma.scanLog.count({
-      where: { createdAt: { gte: startDate, lte: endDate }, blockchainVerified: false },
-    }),
-  ]);
-
-  // Get shipment stats
-  const [totalShipments, deliveredShipments, pendingShipments] = await Promise.all([
-    prisma.shipment.count({
-      where: { createdAt: { gte: startDate, lte: endDate } },
-    }).catch(() => 0),
-    prisma.shipment.count({
-      where: { createdAt: { gte: startDate, lte: endDate }, status: 'DELIVERED' },
-    }).catch(() => 0),
-    prisma.shipment.count({
-      where: { createdAt: { gte: startDate, lte: endDate }, status: 'PENDING' },
-    }).catch(() => 0),
-  ]);
-
-  // Get total units from batches
-  const totalUnits = await prisma.batch.aggregate({
-    _sum: { quantity: true },
-  });
-
-  // Get production trend (batches created per day)
-  const productionTrend = await getProductionTrend(startDate, endDate);
-
-  // Get sales/shipment trend
-  const salesTrend = await getSalesTrend(startDate, endDate);
-
-  // Get top products
-  const topProducts = await getTopProducts();
-
-  // Get regional data
-  const regionalData = await getRegionalData();
-
-  // Get category distribution
-  const categoryDistribution = await getCategoryDistribution();
-
-  // Get geographic order data
-  const geographicData = await getGeographicOrderData();
-
-  return {
-    success: true,
-    data: {
-      summary: {
-        totalBatches: batchStats.totalBatches,
-        totalUnits: totalUnits._sum.quantity || 0,
-        totalScans,
-        verifiedScans,
-        counterfeitScans,
-        verificationRate: totalScans > 0 ? ((verifiedScans / totalScans) * 100).toFixed(1) : 0,
-        totalShipments,
-        deliveredShipments,
-        pendingShipments,
+    };
+  } catch (error: any) {
+    console.error('Error in getDashboardAnalytics:', error);
+    return {
+      success: false,
+      error: error.message || 'Failed to get dashboard analytics',
+      data: {
+        summary: {
+          totalBatches: 0,
+          totalUnits: 0,
+          totalScans: 0,
+          verifiedScans: 0,
+          counterfeitScans: 0,
+          verificationRate: '0',
+          totalShipments: 0,
+          deliveredShipments: 0,
+          pendingShipments: 0,
+          inTransitShipments: 0,
+        },
+        batchStats: {
+          totalBatches: 0,
+          activeBatches: 0,
+          recalledBatches: 0,
+          expiredBatches: 0,
+        },
+        productionTrend: [],
+        salesTrend: [],
+        topProducts: [],
+        regionalData: [],
+        categoryDistribution: [],
+        geographicData: [],
       },
-      batchStats,
-      productionTrend,
-      salesTrend,
-      topProducts,
-      regionalData,
-      categoryDistribution,
-      geographicData,
-    },
-  };
+    };
+  }
 }
 
 /**
  * Get production trend (batches created per day)
  */
 async function getProductionTrend(startDate: Date, endDate: Date) {
-  const batches = await prisma.batch.findMany({
-    where: {
-      createdAt: { gte: startDate, lte: endDate },
-    },
-    select: {
-      createdAt: true,
-      quantity: true,
-    },
-    orderBy: { createdAt: 'asc' },
-  });
-
-  // Group by day
-  const groupedByDay = batches.reduce((acc: Record<string, number>, batch) => {
-    const day = batch.createdAt.toISOString().split('T')[0] as string;
-    acc[day] = (acc[day] || 0) + (batch.quantity || 0);
-    return acc;
-  }, {});
-
-  // Convert to array format for charts
-  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const last7Days = [];
-  for (let i = 6; i >= 0; i--) {
-    const date = new Date();
-    date.setDate(date.getDate() - i);
-    const dayName = days[date.getDay()];
-    const dateKey = date.toISOString().split('T')[0] as string;
-    last7Days.push({
-      label: dayName,
-      value: groupedByDay[dateKey] || 0,
-      date: dateKey,
+  try {
+    const batches = await prisma.batch.findMany({
+      where: {
+        createdAt: { gte: startDate, lte: endDate },
+      },
+      select: {
+        createdAt: true,
+        quantity: true,
+      },
+      orderBy: { createdAt: 'asc' },
     });
-  }
 
-  return last7Days;
+    // Group by day
+    const groupedByDay = batches.reduce((acc: Record<string, number>, batch) => {
+      const day = batch.createdAt.toISOString().split('T')[0] as string;
+      acc[day] = (acc[day] || 0) + (batch.quantity || 0);
+      return acc;
+    }, {});
+
+    // Calculate number of days
+    const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+    const numDays = Math.min(daysDiff, 365); // Cap at 365 days
+    
+    // Generate data for all days in range
+    const trendData = [];
+    for (let i = numDays - 1; i >= 0; i--) {
+      const date = new Date(endDate);
+      date.setDate(date.getDate() - i);
+      const dateKey = date.toISOString().split('T')[0] as string;
+      const dayName = date.toLocaleDateString('en', { weekday: 'short' });
+      
+      trendData.push({
+        label: dayName,
+        value: groupedByDay[dateKey] || 0,
+        date: dateKey,
+      });
+    }
+
+    return trendData;
+  } catch (error) {
+    console.error('Error getting production trend:', error);
+    return [];
+  }
 }
 
 /**
  * Get sales/shipment trend
  */
 async function getSalesTrend(startDate: Date, endDate: Date) {
-  const shipments = await prisma.shipment.findMany({
-    where: {
-      createdAt: { gte: startDate, lte: endDate },
-    },
-    select: {
-      createdAt: true,
-      quantity: true,
-    },
-    orderBy: { createdAt: 'asc' },
-  }).catch(() => []);
+  try {
+    const shipments = await prisma.shipment.findMany({
+      where: {
+        createdAt: { gte: startDate, lte: endDate },
+      },
+      select: {
+        createdAt: true,
+        quantity: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    }).catch(() => []);
 
-  // Group by day
-  const groupedByDay = (shipments as any[]).reduce((acc: Record<string, number>, shipment) => {
-    const day = shipment.createdAt.toISOString().split('T')[0];
-    acc[day] = (acc[day] || 0) + (shipment.quantity || 0);
-    return acc;
-  }, {});
+    // Group by day
+    const groupedByDay = (shipments as any[]).reduce((acc: Record<string, number>, shipment) => {
+      const day = shipment.createdAt.toISOString().split('T')[0];
+      acc[day] = (acc[day] || 0) + (shipment.quantity || 1); // Count shipments, use quantity if available
+      return acc;
+    }, {});
 
-  // Convert to array format for charts
-  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const last7Days = [];
-  for (let i = 6; i >= 0; i--) {
-    const date = new Date();
-    date.setDate(date.getDate() - i);
-    const dayName = days[date.getDay()];
-    const dateKey = date.toISOString().split('T')[0] as string;
-    last7Days.push({
-      label: dayName,
-      value: groupedByDay[dateKey] || 0,
-      date: dateKey,
-    });
+    // Calculate number of days
+    const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+    const numDays = Math.min(daysDiff, 365); // Cap at 365 days
+    
+    // Generate data for all days in range
+    const trendData = [];
+    for (let i = numDays - 1; i >= 0; i--) {
+      const date = new Date(endDate);
+      date.setDate(date.getDate() - i);
+      const dateKey = date.toISOString().split('T')[0] as string;
+      const dayName = date.toLocaleDateString('en', { weekday: 'short' });
+      
+      trendData.push({
+        label: dayName,
+        value: groupedByDay[dateKey] || 0,
+        date: dateKey,
+      });
+    }
+
+    return trendData;
+  } catch (error) {
+    console.error('Error getting sales trend:', error);
+    return [];
   }
-
-  return last7Days;
 }
 
 /**

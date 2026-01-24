@@ -59,69 +59,28 @@ export default function AdminDashboardPage() {
     const headers = { Authorization: `Bearer ${token}` };
 
     try {
+      // Fetch all dashboard data in parallel
       const results = await Promise.allSettled([
         fetch(`${API_BASE}/api/admin/stats`, { headers }).then(r => r.json()),
         fetch(`${API_BASE}/api/audit-trail?limit=10`, { headers }).then(r => r.json()),
         fetch(`${API_BASE}/api/batch?limit=5`, { headers }).then(r => r.json()),
         fetch(`${API_BASE}/api/batch?limit=200`, { headers }).then(r => r.json()),
         fetch(`${API_BASE}/api/shipment?limit=200`, { headers }).then(r => r.json()),
-        fetch(`${API_BASE}/api/user?limit=100`, { headers }).then(r => r.json()),
-        fetch(`${API_BASE}/api/manufacturer?limit=50`, { headers }).then(r => r.json()),
-        fetch(`${API_BASE}/api/distributor?limit=50`, { headers }).then(r => r.json()),
       ]);
 
-      // Process stats - try admin stats first, fallback to calculating
+      // Process stats from admin endpoint
       if (results[0].status === 'fulfilled' && results[0].value.success) {
         setStats(results[0].value.data);
       } else {
-        // Calculate stats from individual endpoints
-        let calcStats: DashboardStats = {
+        console.error('Failed to fetch admin stats:', results[0]);
+        // Fallback to default stats
+        setStats({
           users: { total: 0, manufacturers: 0, distributors: 0, pharmacies: 0, admins: 0 },
           batches: { total: 0, active: 0, recalled: 0, expired: 0 },
           shipments: { total: 0, inTransit: 0, delivered: 0, pending: 0 },
           scans: { total: 0, verified: 0, failed: 0 },
           fraudAlerts: 0,
-        };
-
-        // Users
-        if (results[5].status === 'fulfilled' && results[5].value.success) {
-          const users = results[5].value.data || [];
-          calcStats.users.total = results[5].value.pagination?.total || users.length;
-          calcStats.users.manufacturers = users.filter((u: any) => u.role === 'MANUFACTURER').length;
-          calcStats.users.distributors = users.filter((u: any) => u.role === 'DISTRIBUTOR').length;
-          calcStats.users.pharmacies = users.filter((u: any) => u.role === 'PHARMACY').length;
-          calcStats.users.admins = users.filter((u: any) => u.role === 'ADMIN').length;
-        }
-
-        // Manufacturers count
-        if (results[6].status === 'fulfilled' && results[6].value.success) {
-          calcStats.users.manufacturers = results[6].value.pagination?.total || (results[6].value.data?.length || 0);
-        }
-
-        // Distributors count
-        if (results[7].status === 'fulfilled' && results[7].value.success) {
-          calcStats.users.distributors = results[7].value.pagination?.total || (results[7].value.data?.length || 0);
-        }
-
-        // Batches
-        if (results[3].status === 'fulfilled' && results[3].value.success) {
-          const batches = results[3].value.data || [];
-          calcStats.batches.total = results[3].value.pagination?.total || batches.length;
-          calcStats.batches.active = batches.filter((b: any) => b.status === 'ACTIVE' || b.status === 'VALID').length;
-          calcStats.batches.recalled = batches.filter((b: any) => b.status === 'RECALLED').length;
-          calcStats.batches.expired = batches.filter((b: any) => b.status === 'EXPIRED' || new Date(b.expiryDate) < new Date()).length;
-        }
-
-        // Shipments
-        if (results[4].status === 'fulfilled' && results[4].value.success) {
-          const shipments = results[4].value.data || [];
-          calcStats.shipments.total = results[4].value.pagination?.total || shipments.length;
-          calcStats.shipments.delivered = shipments.filter((s: any) => s.status === 'DELIVERED').length;
-          calcStats.shipments.inTransit = shipments.filter((s: any) => s.status === 'IN_TRANSIT').length;
-          calcStats.shipments.pending = shipments.filter((s: any) => s.status === 'PENDING').length;
-        }
-
-        setStats(calcStats);
+        });
       }
 
       // Process activities
@@ -304,9 +263,19 @@ export default function AdminDashboardPage() {
             />
           </div>
 
-          {/* Charts Row 1 */}
+          {/* Charts Row 1 - Activity Trend (Mantis Style) */}
           <div className="mb-6 grid gap-6 lg:grid-cols-3">
-            <ChartCard title="Activity Trend" subtitle="Batches & Shipments - Last 7 days" className="lg:col-span-2">
+            <ChartCard 
+              title="Activity Trend" 
+              subtitle="Batches & Shipments - Last 7 days" 
+              className="lg:col-span-2"
+              action={
+                <div className="flex gap-2">
+                  <button className="px-3 py-1 text-xs font-medium rounded-lg bg-emerald-100 text-emerald-700">Month</button>
+                  <button className="px-3 py-1 text-xs font-medium rounded-lg text-slate-500 hover:bg-slate-100">Week</button>
+                </div>
+              }
+            >
               <MultiLineChart
                 series={[
                   { name: "Batches", data: trendData.batches, color: "#0ea371" },
