@@ -96,6 +96,20 @@
         {
           "name": "expiry_date",
           "type": "i64"
+        },
+        {
+          "name": "quantity",
+          "type": "u64"
+        },
+        {
+          "name": "mrp",
+          "type": "u64"
+        },
+        {
+          "name": "metadata_hash",
+          "type": {
+            "option": "string"
+          }
         }
       ]
     },
@@ -277,13 +291,13 @@
     },
     {
       "code": 6001,
-      "name": "EmptyBrandName",
-      "msg": "Brand name cannot be empty"
+      "name": "BatchIdTooLong",
+      "msg": "Batch ID exceeds maximum length (64 chars)"
     },
     {
       "code": 6002,
-      "name": "EmptyGenericName",
-      "msg": "Generic name cannot be empty"
+      "name": "MetadataHashTooLong",
+      "msg": "Metadata hash exceeds maximum length (64 chars)"
     },
     {
       "code": 6003,
@@ -297,98 +311,33 @@
     },
     {
       "code": 6005,
-      "name": "NearExpiryMedicine",
-      "msg": "Near-expiry medicine detected"
+      "name": "InvalidQuantity",
+      "msg": "Quantity must be greater than zero"
     },
     {
       "code": 6006,
+      "name": "InvalidMrp",
+      "msg": "MRP must be greater than zero"
+    },
+    {
+      "code": 6007,
       "name": "UnauthorizedManufacturer",
       "msg": "Only the manufacturer can perform this action"
     },
     {
-      "code": 6007,
-      "name": "BatchNotFound",
-      "msg": "Batch not found"
-    },
-    {
       "code": 6008,
-      "name": "BatchIdTooLong",
-      "msg": "Batch ID exceeds maximum length"
+      "name": "InvalidBatchStatus",
+      "msg": "Invalid batch status transition"
     },
     {
       "code": 6009,
-      "name": "BrandNameTooLong",
-      "msg": "Brand name exceeds maximum length"
-    },
-    {
-      "code": 6010,
-      "name": "GenericNameTooLong",
-      "msg": "Generic name exceeds maximum length"
-    },
-    {
-      "code": 6011,
-      "name": "InvalidBatchStatus",
-      "msg": "Invalid batch status"
-    },
-    {
-      "code": 6012,
-      "name": "InvalidMrp",
-      "msg": "MRP cannot be zero"
-    },
-    {
-      "code": 6013,
-      "name": "InvalidQuantity",
-      "msg": "Quantity received cannot be zero"
-    },
-    {
-      "code": 6014,
-      "name": "EmptyStrength",
-      "msg": "Strength cannot be empty"
-    },
-    {
-      "code": 6015,
-      "name": "EmptyComposition",
-      "msg": "Composition cannot be empty"
-    },
-    {
-      "code": 6016,
-      "name": "EmptyManufacturerName",
-      "msg": "Manufacturer name cannot be empty"
-    },
-    {
-      "code": 6017,
-      "name": "EmptyManufacturerLicense",
-      "msg": "Manufacturer license cannot be empty"
-    },
-    {
-      "code": 6018,
-      "name": "EmptyManufacturerAddress",
-      "msg": "Manufacturer address cannot be empty"
-    },
-    {
-      "code": 6019,
-      "name": "EmptyInvoiceNumber",
-      "msg": "Invoice number cannot be empty"
-    },
-    {
-      "code": 6020,
-      "name": "EmptyGstNumber",
-      "msg": "GST number cannot be empty"
-    },
-    {
-      "code": 6021,
-      "name": "InvalidPhysicalCondition",
-      "msg": "Invalid physical condition - medicine must be in good condition"
-    },
-    {
-      "code": 6022,
       "name": "ManufacturerNotVerified",
       "msg": "Manufacturer is not verified in the registry"
     },
     {
-      "code": 6023,
-      "name": "ManufacturerAlreadyRegistered",
-      "msg": "Manufacturer is already registered"
+      "code": 6010,
+      "name": "BatchAlreadyRecalled",
+      "msg": "Cannot modify a recalled batch"
     }
   ],
   "types": [
@@ -406,12 +355,26 @@
             "type": "pubkey"
           },
           {
+            "name": "metadata_hash",
+            "type": {
+              "option": "string"
+            }
+          },
+          {
             "name": "manufacturing_date",
             "type": "i64"
           },
           {
             "name": "expiry_date",
             "type": "i64"
+          },
+          {
+            "name": "quantity",
+            "type": "u64"
+          },
+          {
+            "name": "mrp",
+            "type": "u64"
           },
           {
             "name": "status",
@@ -423,6 +386,10 @@
           },
           {
             "name": "created_at",
+            "type": "i64"
+          },
+          {
+            "name": "updated_at",
             "type": "i64"
           },
           {
@@ -450,12 +417,26 @@
             "type": "pubkey"
           },
           {
+            "name": "metadata_hash",
+            "type": {
+              "option": "string"
+            }
+          },
+          {
             "name": "manufacturing_date",
             "type": "i64"
           },
           {
             "name": "expiry_date",
             "type": "i64"
+          },
+          {
+            "name": "quantity",
+            "type": "u64"
+          },
+          {
+            "name": "mrp",
+            "type": "u64"
           },
           {
             "name": "timestamp",
@@ -471,6 +452,9 @@
         "variants": [
           {
             "name": "Valid"
+          },
+          {
+            "name": "Suspended"
           },
           {
             "name": "Recalled"
