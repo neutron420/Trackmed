@@ -1,0 +1,530 @@
+{
+  "address": "48BYj4BVCp7D3EByu6f9nW8uHaFuuFdwJozB7iLZPxhJ",
+  "metadata": {
+    "name": "solana_test_project",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Created with Anchor"
+  },
+  "instructions": [
+    {
+      "name": "register_batch",
+      "discriminator": [
+        255,
+        186,
+        59,
+        153,
+        95,
+        233,
+        143,
+        171
+      ],
+      "accounts": [
+        {
+          "name": "batch",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  97,
+                  116,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "manufacturer"
+              },
+              {
+                "kind": "arg",
+                "path": "batch_hash"
+              }
+            ]
+          }
+        },
+        {
+          "name": "registry",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  110,
+                  117,
+                  102,
+                  97,
+                  99,
+                  116,
+                  117,
+                  114,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "manufacturer"
+              }
+            ]
+          }
+        },
+        {
+          "name": "manufacturer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "batch_hash",
+          "type": "string"
+        },
+        {
+          "name": "manufacturing_date",
+          "type": "i64"
+        },
+        {
+          "name": "expiry_date",
+          "type": "i64"
+        },
+        {
+          "name": "quantity",
+          "type": "u64"
+        },
+        {
+          "name": "mrp",
+          "type": "u64"
+        },
+        {
+          "name": "metadata_hash",
+          "type": {
+            "option": "string"
+          }
+        }
+      ]
+    },
+    {
+      "name": "register_manufacturer",
+      "discriminator": [
+        209,
+        17,
+        71,
+        213,
+        190,
+        230,
+        125,
+        136
+      ],
+      "accounts": [
+        {
+          "name": "registry",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  110,
+                  117,
+                  102,
+                  97,
+                  99,
+                  116,
+                  117,
+                  114,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "manufacturer"
+              }
+            ]
+          }
+        },
+        {
+          "name": "manufacturer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "update_batch_status",
+      "discriminator": [
+        71,
+        201,
+        175,
+        178,
+        12,
+        50,
+        51,
+        175
+      ],
+      "accounts": [
+        {
+          "name": "batch",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  97,
+                  116,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "manufacturer"
+              },
+              {
+                "kind": "arg",
+                "path": "batch_hash"
+              }
+            ]
+          }
+        },
+        {
+          "name": "manufacturer",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "batch_hash",
+          "type": "string"
+        },
+        {
+          "name": "new_status",
+          "type": {
+            "defined": {
+              "name": "BatchStatus"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Batch",
+      "discriminator": [
+        156,
+        194,
+        70,
+        44,
+        22,
+        88,
+        137,
+        44
+      ]
+    },
+    {
+      "name": "ManufacturerRegistry",
+      "discriminator": [
+        139,
+        110,
+        77,
+        210,
+        164,
+        119,
+        201,
+        104
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "BatchRegistered",
+      "discriminator": [
+        125,
+        239,
+        216,
+        76,
+        8,
+        32,
+        199,
+        204
+      ]
+    },
+    {
+      "name": "BatchStatusUpdated",
+      "discriminator": [
+        68,
+        227,
+        137,
+        197,
+        172,
+        152,
+        59,
+        35
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "EmptyBatchId",
+      "msg": "Batch ID cannot be empty"
+    },
+    {
+      "code": 6001,
+      "name": "BatchIdTooLong",
+      "msg": "Batch ID exceeds maximum length (64 chars)"
+    },
+    {
+      "code": 6002,
+      "name": "MetadataHashTooLong",
+      "msg": "Metadata hash exceeds maximum length (64 chars)"
+    },
+    {
+      "code": 6003,
+      "name": "InvalidDateRange",
+      "msg": "Expiry date must be after manufacturing date"
+    },
+    {
+      "code": 6004,
+      "name": "ExpiredMedicine",
+      "msg": "Expired medicine cannot be registered"
+    },
+    {
+      "code": 6005,
+      "name": "InvalidQuantity",
+      "msg": "Quantity must be greater than zero"
+    },
+    {
+      "code": 6006,
+      "name": "InvalidMrp",
+      "msg": "MRP must be greater than zero"
+    },
+    {
+      "code": 6007,
+      "name": "UnauthorizedManufacturer",
+      "msg": "Only the manufacturer can perform this action"
+    },
+    {
+      "code": 6008,
+      "name": "InvalidBatchStatus",
+      "msg": "Invalid batch status transition"
+    },
+    {
+      "code": 6009,
+      "name": "ManufacturerNotVerified",
+      "msg": "Manufacturer is not verified in the registry"
+    },
+    {
+      "code": 6010,
+      "name": "BatchAlreadyRecalled",
+      "msg": "Cannot modify a recalled batch"
+    }
+  ],
+  "types": [
+    {
+      "name": "Batch",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "batch_hash",
+            "type": "string"
+          },
+          {
+            "name": "manufacturer_wallet",
+            "type": "pubkey"
+          },
+          {
+            "name": "metadata_hash",
+            "type": {
+              "option": "string"
+            }
+          },
+          {
+            "name": "manufacturing_date",
+            "type": "i64"
+          },
+          {
+            "name": "expiry_date",
+            "type": "i64"
+          },
+          {
+            "name": "quantity",
+            "type": "u64"
+          },
+          {
+            "name": "mrp",
+            "type": "u64"
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "BatchStatus"
+              }
+            }
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          },
+          {
+            "name": "updated_at",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "BatchRegistered",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "batch_hash",
+            "type": "string"
+          },
+          {
+            "name": "batch_pda",
+            "type": "pubkey"
+          },
+          {
+            "name": "manufacturer_wallet",
+            "type": "pubkey"
+          },
+          {
+            "name": "metadata_hash",
+            "type": {
+              "option": "string"
+            }
+          },
+          {
+            "name": "manufacturing_date",
+            "type": "i64"
+          },
+          {
+            "name": "expiry_date",
+            "type": "i64"
+          },
+          {
+            "name": "quantity",
+            "type": "u64"
+          },
+          {
+            "name": "mrp",
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "BatchStatus",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Valid"
+          },
+          {
+            "name": "Suspended"
+          },
+          {
+            "name": "Recalled"
+          }
+        ]
+      }
+    },
+    {
+      "name": "BatchStatusUpdated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "batch_hash",
+            "type": "string"
+          },
+          {
+            "name": "batch_pda",
+            "type": "pubkey"
+          },
+          {
+            "name": "old_status",
+            "type": {
+              "defined": {
+                "name": "BatchStatus"
+              }
+            }
+          },
+          {
+            "name": "new_status",
+            "type": {
+              "defined": {
+                "name": "BatchStatus"
+              }
+            }
+          },
+          {
+            "name": "updated_by",
+            "type": "pubkey"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ManufacturerRegistry",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "manufacturer",
+            "type": "pubkey"
+          },
+          {
+            "name": "is_verified",
+            "type": "bool"
+          },
+          {
+            "name": "registered_at",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    }
+  ]
+}

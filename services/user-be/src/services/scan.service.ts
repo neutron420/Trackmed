@@ -1,4 +1,10 @@
-import prisma from '../config/database';
+import prisma from "../config/database";
+import { PublicKey } from "@solana/web3.js";
+import {
+  fetchBatchFromBlockchain,
+  parseBatchStatus,
+  deriveBatchPDA,
+} from "../config/solana";
 
 interface ServiceResult {
   success: boolean;
@@ -6,8 +12,100 @@ interface ServiceResult {
   data?: any;
 }
 
+// Verification status types
+type VerificationStatus =
+  | "AUTHENTIC"
+  | "EXPIRED"
+  | "EXPIRING_SOON"
+  | "RECALLED"
+  | "WARNING"
+  | "COUNTERFEIT";
+
 /**
- * Scan QR code and get medicine/batch details
+ * Verify batch data against blockchain
+ * This is the core security check - blockchain data is immutable
+ */
+async function verifyBatchOnBlockchain(
+  manufacturerWalletAddress: string,
+  batchHash: string,
+  dbExpiryDate: Date,
+  dbStatus: string,
+): Promise<{
+  verified: boolean;
+  blockchainStatus?: "VALID" | "SUSPENDED" | "RECALLED";
+  blockchainExpiryDate?: Date;
+  warning?: string;
+  error?: string;
+}> {
+  try {
+    // Convert wallet address string to PublicKey
+    const manufacturerWallet = new PublicKey(manufacturerWalletAddress);
+
+    // Fetch batch data from Solana blockchain
+    const blockchainBatch = await fetchBatchFromBlockchain(
+      manufacturerWallet,
+      batchHash,
+    );
+
+    if (!blockchainBatch) {
+      return {
+        verified: false,
+        warning:
+          "Batch not found on blockchain. This could indicate a recently registered batch or potential tampering.",
+      };
+    }
+
+    // Parse blockchain data
+    const blockchainStatus = parseBatchStatus(blockchainBatch.status);
+    const blockchainExpiryTimestamp = Number(blockchainBatch.expiryDate);
+    const blockchainExpiryDate = new Date(blockchainExpiryTimestamp * 1000);
+
+    // Verify: Compare blockchain expiry date with database
+    // Allow 1 day tolerance for timezone differences
+    const dbExpiryTimestamp = Math.floor(dbExpiryDate.getTime() / 1000);
+    const expiryDifference = Math.abs(
+      blockchainExpiryTimestamp - dbExpiryTimestamp,
+    );
+    const ONE_DAY_IN_SECONDS = 86400;
+
+    if (expiryDifference > ONE_DAY_IN_SECONDS) {
+      return {
+        verified: false,
+        blockchainStatus,
+        blockchainExpiryDate,
+        warning:
+          "CRITICAL: Database expiry date does not match blockchain. Possible data tampering detected!",
+      };
+    }
+
+    // Verify: Check if blockchain status is more severe than database
+    // Blockchain is the source of truth for recalls
+    if (blockchainStatus === "RECALLED" && dbStatus !== "RECALLED") {
+      return {
+        verified: true,
+        blockchainStatus,
+        blockchainExpiryDate,
+        warning:
+          "Blockchain shows batch as RECALLED but database not updated. Using blockchain status.",
+      };
+    }
+
+    return {
+      verified: true,
+      blockchainStatus,
+      blockchainExpiryDate,
+    };
+  } catch (error: any) {
+    console.error("[BlockchainVerify] Error:", error.message);
+    return {
+      verified: false,
+      error: error.message || "Failed to verify on blockchain",
+    };
+  }
+}
+
+/**
+ * Scan QR code and get medicine/batch details with BLOCKCHAIN VERIFICATION
  */
 export const scanQRCode = async (
   qrCode: string,
@@ -20,10 +118,10 @@ export const scanQRCode = async (
     locationLat?: number;
     locationLng?: number;
     locationAddress?: string;
-  }
+  },
 ): Promise<ServiceResult> => {
   try {
-    // Find QR code
+    // Step 1: Find QR code in database
     const qrCodeRecord = await prisma.qRCode.findUnique({
       where: { code: qrCode },
       include: {
@@ -40,6 +138,7 @@ export const scanQRCode = async (
                 state: true,
                 country: true,
                 isVerified: true,
+                walletAddress: true, // Needed for blockchain verification
               },
             },
           },
@@ -51,14 +150,14 @@ export const scanQRCode = async (
       // Log potential fraud - invalid QR code
       return {
         success: false,
-        error: 'Invalid QR code. This medicine may be counterfeit.',
+        error: "Invalid QR code. This medicine may be counterfeit.",
       };
     }
 
     if (!qrCodeRecord.isActive) {
       return {
         success: false,
-        error: 'This QR code has been deactivated.',
+        error: "This QR code has been deactivated.",
       };
     }
 
@@ -66,26 +165,83 @@ export const scanQRCode = async (
     const medicine = batch.medicine;
     const manufacturer = batch.manufacturer;
 
-    // Check batch status
-    const isRecalled = batch.status === 'RECALLED';
-    const isExpired = new Date() > batch.expiryDate;
+    // Step 2: BLOCKCHAIN VERIFICATION (Immutable Source of Truth)
+    let blockchainVerified = false;
+    let blockchainWarning: string | undefined;
+    let blockchainStatus: "VALID" | "SUSPENDED" | "RECALLED" | undefined;
+    let blockchainExpiryDate: Date | undefined;
 
-    // Determine verification status
-    let verificationStatus: 'AUTHENTIC' | 'RECALLED' | 'EXPIRED' | 'WARNING' = 'AUTHENTIC';
-    let verificationMessage = 'This medicine is authentic and verified.';
+    // Only verify on blockchain if batch has a batchHash and manufacturer has wallet
+    if (batch.batchHash && manufacturer.walletAddress) {
+      const blockchainResult = await verifyBatchOnBlockchain(
+        manufacturer.walletAddress,
+        batch.batchHash,
+        batch.expiryDate,
+        batch.status,
+      );
 
-    if (isRecalled) {
-      verificationStatus = 'RECALLED';
-      verificationMessage = 'WARNING: This batch has been recalled. Do not consume.';
-    } else if (isExpired) {
-      verificationStatus = 'EXPIRED';
-      verificationMessage = 'WARNING: This medicine has expired.';
-    } else if (!manufacturer.isVerified) {
-      verificationStatus = 'WARNING';
-      verificationMessage = 'The manufacturer of this medicine is not verified.';
+      blockchainVerified = blockchainResult.verified;
+      blockchainWarning = blockchainResult.warning || blockchainResult.error;
+      blockchainStatus = blockchainResult.blockchainStatus;
+      blockchainExpiryDate = blockchainResult.blockchainExpiryDate;
     }
 
-    // Log the scan
+    // Step 3: Determine verification status (prioritize blockchain data)
+    // Use blockchain expiry date if available, otherwise use database
+    const effectiveExpiryDate = blockchainExpiryDate || batch.expiryDate;
+    const now = new Date();
+    const daysUntilExpiry = Math.ceil(
+      (effectiveExpiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
+    );
+
+    // Use blockchain status if available (it's immutable and more trustworthy)
+    const effectiveStatus = blockchainStatus || batch.status;
+    const isRecalled = effectiveStatus === "RECALLED";
+    const isSuspended = effectiveStatus === "SUSPENDED";
+    const isExpired = daysUntilExpiry < 0;
+    const isExpiringSoon = daysUntilExpiry >= 0 && daysUntilExpiry <= 30;
+
+    // Determine final verification status and message
+    let verificationStatus: VerificationStatus = "AUTHENTIC";
+    let verificationMessage =
+      "This medicine is authentic and verified on blockchain.";
+    let statusColor = "green"; // For mobile app UI
+
+    if (!blockchainVerified && batch.batchHash) {
+      // Has batch hash but couldn't verify on blockchain
+      verificationStatus = "WARNING";
+      verificationMessage =
+        blockchainWarning ||
+        "Could not verify on blockchain. Proceed with caution.";
+      statusColor = "yellow";
+    } else if (isRecalled) {
+      verificationStatus = "RECALLED";
+      verificationMessage =
+        "WARNING: This batch has been recalled. Do not consume.";
+      statusColor = "red";
+    } else if (isSuspended) {
+      verificationStatus = "WARNING";
+      verificationMessage =
+        "WARNING: This batch has been suspended. Contact manufacturer.";
+      statusColor = "yellow";
+    } else if (isExpired) {
+      verificationStatus = "EXPIRED";
+      verificationMessage = `WARNING: This medicine expired ${Math.abs(
+        daysUntilExpiry,
+      )} days ago. Do not use.`;
+      statusColor = "red";
+    } else if (isExpiringSoon) {
+      verificationStatus = "EXPIRING_SOON";
+      verificationMessage = `This medicine is authentic but expires in ${daysUntilExpiry} days. Use before expiry.`;
+      statusColor = "orange";
+    } else if (!manufacturer.isVerified) {
+      verificationStatus = "WARNING";
+      verificationMessage =
+        "The manufacturer of this medicine is not verified.";
+      statusColor = "yellow";
+    }
+
+    // Step 4: Log the scan
     await prisma.scanLog.create({
       data: {
         qrCodeId: qrCodeRecord.id,
@@ -98,20 +254,26 @@ export const scanQRCode = async (
         locationLat: deviceInfo?.locationLat,
         locationLng: deviceInfo?.locationLng,
         locationAddress: deviceInfo?.locationAddress,
-        scanType: 'VERIFICATION',
-        blockchainVerified: !!batch.blockchainTxHash,
-        blockchainStatus: batch.status,
+        scanType: "VERIFICATION",
+        blockchainVerified: blockchainVerified,
+        blockchainStatus: effectiveStatus,
       },
     });
 
-    // Prepare response
+    // Step 5: Prepare response for mobile app
     const response = {
+      // Primary verification result (what app should show to user)
       verification: {
         status: verificationStatus,
         message: verificationMessage,
-        isAuthentic: verificationStatus === 'AUTHENTIC',
-        blockchainVerified: !!batch.blockchainTxHash,
+        statusColor: statusColor,
+        isAuthentic:
+          verificationStatus === "AUTHENTIC" ||
+          verificationStatus === "EXPIRING_SOON",
+        blockchainVerified: blockchainVerified,
+        blockchainWarning: blockchainWarning,
       },
+      // Medicine details
       medicine: {
         id: medicine.id,
         name: medicine.name,
@@ -124,17 +286,19 @@ export const scanQRCode = async (
         description: medicine.description,
         imageUrl: medicine.imageUrl,
       },
+      // Batch details (use blockchain data where available)
       batch: {
         id: batch.id,
         batchNumber: batch.batchNumber,
+        batchHash: batch.batchHash,
         manufacturingDate: batch.manufacturingDate,
-        expiryDate: batch.expiryDate,
-        status: batch.status,
+        expiryDate: effectiveExpiryDate, // Use blockchain expiry if available
+        status: effectiveStatus, // Use blockchain status if available
         isExpired,
-        daysUntilExpiry: Math.ceil(
-          (batch.expiryDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
-        ),
+        isExpiringSoon,
+        daysUntilExpiry,
       },
+      // Manufacturer details
       manufacturer: {
         name: manufacturer.name,
         licenseNumber: manufacturer.licenseNumber,
@@ -144,12 +308,16 @@ export const scanQRCode = async (
         country: manufacturer.country,
         isVerified: manufacturer.isVerified,
       },
+      // QR code info
       qrCode: {
         id: qrCodeRecord.id,
         unitNumber: qrCodeRecord.unitNumber,
       },
       // For adding to cart
-      canPurchase: verificationStatus === 'AUTHENTIC' && batch.remainingQuantity > 0,
+      canPurchase:
+        (verificationStatus === "AUTHENTIC" ||
+          verificationStatus === "EXPIRING_SOON") &&
+        batch.remainingQuantity > 0,
       availableQuantity: batch.remainingQuantity,
     };
 
@@ -158,10 +326,10 @@ export const scanQRCode = async (
       data: response,
     };
   } catch (error: any) {
-    console.error('Scan QR code error:', error);
+    console.error("Scan QR code error:", error);
     return {
       success: false,
-      error: error.message || 'Failed to scan QR code',
+      error: error.message || "Failed to scan QR code",
     };
   }
 };
@@ -169,17 +337,19 @@ export const scanQRCode = async (
 /**
  * Get medicine details by ID
  */
-export const getMedicineById = async (medicineId: string): Promise<ServiceResult> => {
+export const getMedicineById = async (
+  medicineId: string,
+): Promise<ServiceResult> => {
   try {
     const medicine = await prisma.medicine.findUnique({
       where: { id: medicineId },
       include: {
         batches: {
           where: {
-            status: 'VALID',
+            status: "VALID",
             expiryDate: { gt: new Date() },
             remainingQuantity: { gt: 0 },
-            lifecycleStatus: 'AT_PHARMACY',
+            lifecycleStatus: "AT_PHARMACY",
           },
           select: {
             id: true,
@@ -193,7 +363,7 @@ export const getMedicineById = async (medicineId: string): Promise<ServiceResult
               },
             },
           },
-          orderBy: { expiryDate: 'asc' },
+          orderBy: { expiryDate: "asc" },
           take: 5,
         },
       },
@@ -202,7 +372,7 @@ export const getMedicineById = async (medicineId: string): Promise<ServiceResult
     if (!medicine) {
       return {
         success: false,
-        error: 'Medicine not found',
+        error: "Medicine not found",
       };
     }
 
@@ -214,10 +384,10 @@ export const getMedicineById = async (medicineId: string): Promise<ServiceResult
       },
     };
   } catch (error: any) {
-    console.error('Get medicine error:', error);
+    console.error("Get medicine error:", error);
     return {
       success: false,
-      error: error.message || 'Failed to get medicine',
+      error: error.message || "Failed to get medicine",
     };
   }
 };
@@ -248,7 +418,7 @@ export const getBatchById = async (batchId: string): Promise<ServiceResult> => {
     if (!batch) {
       return {
         success: false,
-        error: 'Batch not found',
+        error: "Batch not found",
       };
     }
 
@@ -260,19 +430,17 @@ export const getBatchById = async (batchId: string): Promise<ServiceResult> => {
         ...batch,
         isExpired,
         daysUntilExpiry: Math.ceil(
-          (batch.expiryDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+          (batch.expiryDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24),
         ),
         canPurchase:
-          batch.status === 'VALID' &&
-          !isExpired &&
-          batch.remainingQuantity > 0,
+          batch.status === "VALID" && !isExpired && batch.remainingQuantity > 0,
       },
     };
   } catch (error: any) {
-    console.error('Get batch error:', error);
+    console.error("Get batch error:", error);
     return {
       success: false,
-      error: error.message || 'Failed to get batch',
+      error: error.message || "Failed to get batch",
     };
   }
 };
@@ -283,7 +451,7 @@ export const getBatchById = async (batchId: string): Promise<ServiceResult> => {
 export const searchMedicines = async (
   query: string,
   page: number = 1,
-  limit: number = 20
+  limit: number = 20,
 ): Promise<ServiceResult> => {
   try {
     const skip = (page - 1) * limit;
@@ -292,9 +460,9 @@ export const searchMedicines = async (
       prisma.medicine.findMany({
         where: {
           OR: [
-            { name: { contains: query, mode: 'insensitive' } },
-            { genericName: { contains: query, mode: 'insensitive' } },
-            { composition: { contains: query, mode: 'insensitive' } },
+            { name: { contains: query, mode: "insensitive" } },
+            { genericName: { contains: query, mode: "insensitive" } },
+            { composition: { contains: query, mode: "insensitive" } },
           ],
         },
         include: {
@@ -302,7 +470,7 @@ export const searchMedicines = async (
             select: {
               batches: {
                 where: {
-                  status: 'VALID',
+                  status: "VALID",
                   expiryDate: { gt: new Date() },
                   remainingQuantity: { gt: 0 },
                 },
@@ -312,14 +480,14 @@ export const searchMedicines = async (
         },
         skip,
         take: limit,
-        orderBy: { name: 'asc' },
+        orderBy: { name: "asc" },
       }),
       prisma.medicine.count({
         where: {
           OR: [
-            { name: { contains: query, mode: 'insensitive' } },
-            { genericName: { contains: query, mode: 'insensitive' } },
-            { composition: { contains: query, mode: 'insensitive' } },
+            { name: { contains: query, mode: "insensitive" } },
+            { genericName: { contains: query, mode: "insensitive" } },
+            { composition: { contains: query, mode: "insensitive" } },
           ],
         },
       }),
@@ -341,10 +509,10 @@ export const searchMedicines = async (
       },
     };
   } catch (error: any) {
-    console.error('Search medicines error:', error);
+    console.error("Search medicines error:", error);
     return {
       success: false,
-      error: error.message || 'Failed to search medicines',
+      error: error.message || "Failed to search medicines",
     };
   }
 };
@@ -355,7 +523,7 @@ export const searchMedicines = async (
 export const getScanHistory = async (
   userId: string,
   page: number = 1,
-  limit: number = 20
+  limit: number = 20,
 ): Promise<ServiceResult> => {
   try {
     const skip = (page - 1) * limit;
@@ -382,7 +550,7 @@ export const getScanHistory = async (
             },
           },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
         skip,
         take: limit,
       }),
@@ -404,10 +572,10 @@ export const getScanHistory = async (
       },
     };
   } catch (error: any) {
-    console.error('Get scan history error:', error);
+    console.error("Get scan history error:", error);
     return {
       success: false,
-      error: error.message || 'Failed to get scan history',
+      error: error.message || "Failed to get scan history",
     };
   }
 };
