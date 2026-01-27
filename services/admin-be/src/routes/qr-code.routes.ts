@@ -5,10 +5,6 @@ import prisma from '../config/database';
 
 const router = Router();
 
-/**
- * GET /api/qr-code/verify/:code
- * Public endpoint - Verify QR code and return medicine details
- */
 router.get('/verify/:code', async (req: Request, res: Response) => {
   try {
     let { code } = req.params;
