@@ -7,6 +7,7 @@ import { DataTable } from "../../../components/data-table";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import Image from "next/image";
+import { getToken, getUser, clearAuth, isAdmin } from "../../../utils/auth";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
@@ -115,7 +116,7 @@ export default function PharmaciesPage() {
   };
 
   const fetchPharmacies = useCallback(async () => {
-    const token = localStorage.getItem("token");
+    const token = getToken();
     if (!token) return;
 
     try {
@@ -132,27 +133,22 @@ export default function PharmaciesPage() {
   }, []);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    const storedUser = localStorage.getItem("user");
+    const token = getToken();
+    const storedUser = getUser();
 
     if (!token || !storedUser) {
       router.push("/login");
       return;
     }
 
-    try {
-      const parsedUser = JSON.parse(storedUser);
-      if (parsedUser.role !== "ADMIN") {
-        router.push("/login");
-        return;
-      }
-      fetchPharmacies().finally(() => {
-        setUser(parsedUser);
-        setIsLoading(false);
-      });
-    } catch {
+    if (!isAdmin()) {
       router.push("/login");
+      return;
     }
+    fetchPharmacies().finally(() => {
+      setUser(storedUser);
+      setIsLoading(false);
+    });
   }, [router, fetchPharmacies]);
 
   // Initialize map when showMapView changes
@@ -361,8 +357,7 @@ export default function PharmaciesPage() {
   }, [showAddModal, selectedPlace]);
 
   const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
+    clearAuth();
     router.push("/login");
   };
 
@@ -370,7 +365,7 @@ export default function PharmaciesPage() {
   const searchOlaPlaces = async () => {
     if (!olaSearch.trim()) return;
 
-    const token = localStorage.getItem("token");
+    const token = getToken();
     if (!token) return;
 
     setIsSearching(true);
@@ -418,7 +413,7 @@ export default function PharmaciesPage() {
       return null;
     }
 
-    const token = localStorage.getItem("token");
+    const token = getToken();
     if (!token) {
       console.error("No token found for image upload");
       return null;
@@ -456,7 +451,7 @@ export default function PharmaciesPage() {
     e.preventDefault();
     setIsSubmitting(true);
 
-    const token = localStorage.getItem("token");
+    const token = getToken();
     if (!token) return;
 
     try {
@@ -499,7 +494,7 @@ export default function PharmaciesPage() {
     if (!editingPharmacy) return;
 
     setIsSubmitting(true);
-    const token = localStorage.getItem("token");
+    const token = getToken();
     if (!token) return;
 
     try {
@@ -564,7 +559,7 @@ export default function PharmaciesPage() {
 
   // Toggle active status
   const handleToggleActive = async (pharmacy: Pharmacy) => {
-    const token = localStorage.getItem("token");
+    const token = getToken();
     if (!token) return;
 
     const newStatus = pharmacy.isActive === false ? true : false;

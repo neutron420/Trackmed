@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
 import { Sidebar } from "../../../components/sidebar";
 import { DataTable, StatusBadge } from "../../../components/data-table";
+import { getToken, getUser, clearAuth, isAdmin } from "../../../utils/auth";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
@@ -56,7 +57,7 @@ export default function ManufacturersPage() {
   const [creating, setCreating] = useState(false);
 
   const fetchManufacturers = useCallback(async () => {
-    const token = localStorage.getItem("token");
+    const token = getToken();
     if (!token) return;
 
     try {
@@ -73,35 +74,29 @@ export default function ManufacturersPage() {
   }, []);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    const storedUser = localStorage.getItem("user");
+    const token = getToken();
+    const storedUser = getUser();
 
     if (!token || !storedUser) {
       router.push("/login");
       return;
     }
 
-    try {
-      const parsedUser = JSON.parse(storedUser);
-      if (parsedUser.role !== "ADMIN") {
-        router.push("/login");
-        return;
-      }
-      setUser(parsedUser);
-      fetchManufacturers().finally(() => setIsLoading(false));
-    } catch {
+    if (!isAdmin()) {
       router.push("/login");
+      return;
     }
+    setUser(storedUser);
+    fetchManufacturers().finally(() => setIsLoading(false));
   }, [router, fetchManufacturers]);
 
   const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
+    clearAuth();
     router.push("/login");
   };
 
   const handleVerify = async (id: string, verify: boolean) => {
-    const token = localStorage.getItem("token");
+    const token = getToken();
     if (!token) return;
 
     setActionLoading(id);
@@ -128,7 +123,7 @@ export default function ManufacturersPage() {
   };
 
   const handleActivate = async (id: string, activate: boolean) => {
-    const token = localStorage.getItem("token");
+    const token = getToken();
     if (!token) return;
 
     setActionLoading(id);
@@ -155,7 +150,7 @@ export default function ManufacturersPage() {
   };
 
   const handleCreateManufacturer = async () => {
-    const token = localStorage.getItem("token");
+    const token = getToken();
     if (!token) return;
 
     if (!createForm.name || !createForm.licenseNumber || !createForm.address || !createForm.walletAddress) {

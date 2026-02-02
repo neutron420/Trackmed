@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
+import { setAuth } from "../../utils/auth";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "";
 
@@ -33,10 +34,9 @@ export default function LoginPage() {
 
       const data = await res.json();
       
-      // Store token in localStorage
+      // Store auth credentials using centralized auth utility
       if (data.data?.token) {
-        localStorage.setItem("token", data.data.token);
-        localStorage.setItem("user", JSON.stringify(data.data.user));
+        setAuth(data.data.token, data.data.user);
       }
 
       setMessage("Login successful. Redirecting...");

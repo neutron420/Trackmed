@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Sidebar } from "../../../components/sidebar";
+import { getToken, getUser, clearAuth, isAdmin } from "../../../utils/auth";
 
 interface User {
   id: string;
@@ -25,30 +26,24 @@ export default function SettingsPage() {
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    const storedUser = localStorage.getItem("user");
+    const token = getToken();
+    const storedUser = getUser();
 
     if (!token || !storedUser) {
       router.push("/login");
       return;
     }
 
-    try {
-      const parsedUser = JSON.parse(storedUser);
-      if (parsedUser.role !== "ADMIN") {
-        router.push("/login");
-        return;
-      }
-      setUser(parsedUser);
-      setIsLoading(false);
-    } catch {
+    if (!isAdmin()) {
       router.push("/login");
+      return;
     }
+    setUser(storedUser);
+    setIsLoading(false);
   }, [router]);
 
   const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
+    clearAuth();
     router.push("/login");
   };
 

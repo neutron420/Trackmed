@@ -4,6 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
+import { setAuth } from "../../utils/auth";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
@@ -41,10 +42,9 @@ export default function AdminLoginPage() {
         throw new Error("Access denied. Admin privileges required.");
       }
 
-      // Store token in localStorage
+      // Store auth credentials using centralized auth utility
       if (data.data?.token) {
-        localStorage.setItem("token", data.data.token);
-        localStorage.setItem("user", JSON.stringify(data.data.user));
+        setAuth(data.data.token, data.data.user);
       }
 
       setMessage("Login successful. Redirecting...");

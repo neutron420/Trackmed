@@ -2,22 +2,15 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { isAuthenticated, isAdmin } from "../utils/auth";
 
 export default function Home() {
   const router = useRouter();
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    const user = localStorage.getItem("user");
-
-    if (token && user) {
-      try {
-        const parsedUser = JSON.parse(user);
-        if (parsedUser.role === "ADMIN") {
-          router.push("/dashboard");
-          return;
-        }
-      } catch {}
+    if (isAuthenticated() && isAdmin()) {
+      router.push("/dashboard");
+      return;
     }
     router.push("/login");
   }, [router]);

@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
 import { Sidebar } from "../../../components/sidebar";
 import { DataTable, StatusBadge } from "../../../components/data-table";
+import { getToken, getUser, clearAuth, isAdmin } from "../../../utils/auth";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
@@ -44,7 +45,7 @@ export default function ShipmentsPage() {
   const [showModal, setShowModal] = useState(false);
 
   const fetchShipments = useCallback(async () => {
-    const token = localStorage.getItem("token");
+    const token = getToken();
     if (!token) return;
 
     try {
@@ -61,30 +62,24 @@ export default function ShipmentsPage() {
   }, []);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    const storedUser = localStorage.getItem("user");
+    const token = getToken();
+    const storedUser = getUser();
 
     if (!token || !storedUser) {
       router.push("/login");
       return;
     }
 
-    try {
-      const parsedUser = JSON.parse(storedUser);
-      if (parsedUser.role !== "ADMIN") {
-        router.push("/login");
-        return;
-      }
-      setUser(parsedUser);
-      fetchShipments().finally(() => setIsLoading(false));
-    } catch {
+    if (!isAdmin()) {
       router.push("/login");
+      return;
     }
+    setUser(storedUser);
+    fetchShipments().finally(() => setIsLoading(false));
   }, [router, fetchShipments]);
 
   const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
+    clearAuth();
     router.push("/login");
   };
 

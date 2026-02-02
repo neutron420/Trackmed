@@ -13,6 +13,7 @@ import {
   StatCardWithChart,
   Gauge 
 } from "../../components/charts";
+import { isAuthenticated, getToken, getUser, clearAuth, isAdmin } from "../../utils/auth";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
@@ -73,7 +74,7 @@ export default function AdminDashboardPage() {
   });
 
   const fetchDashboardData = useCallback(async () => {
-    const token = localStorage.getItem("token");
+    const token = getToken();
     if (!token) return;
 
     const headers = { Authorization: `Bearer ${token}` };
@@ -153,30 +154,24 @@ export default function AdminDashboardPage() {
   }, []);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    const storedUser = localStorage.getItem("user");
-
-    if (!token || !storedUser) {
+    // Check authentication and admin role using centralized auth utility
+    if (!isAuthenticated() || !isAdmin()) {
+      clearAuth();
       router.push("/login");
       return;
     }
 
-    try {
-      const parsedUser = JSON.parse(storedUser);
-      if (parsedUser.role !== "ADMIN") {
-        router.push("/login");
-        return;
-      }
-      setUser(parsedUser);
+    const currentUser = getUser();
+    if (currentUser) {
+      setUser(currentUser);
       fetchDashboardData().finally(() => setIsLoading(false));
-    } catch {
+    } else {
       router.push("/login");
     }
   }, [router, fetchDashboardData]);
 
   const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
+    clearAuth();
     router.push("/login");
   };
 

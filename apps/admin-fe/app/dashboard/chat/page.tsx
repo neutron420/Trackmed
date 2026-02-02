@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useRef, useCallback } from "react";
 import { Sidebar } from "../../../components/sidebar";
+import { getToken, getUser, clearAuth, isAdmin } from "../../../utils/auth";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 // Connect to admin-be WebSocket server for chat functionality
@@ -56,7 +57,7 @@ export default function ChatPage() {
   };
 
   const connectWebSocket = useCallback(() => {
-    const token = localStorage.getItem("token");
+    const token = getToken();
     if (!token || wsRef.current?.readyState === WebSocket.OPEN) return;
 
     try {
@@ -158,7 +159,7 @@ export default function ChatPage() {
   }, [user]);
 
   const fetchManufacturers = useCallback(async () => {
-    const token = localStorage.getItem("token");
+    const token = getToken();
     if (!token) return;
 
     try {
@@ -196,7 +197,7 @@ export default function ChatPage() {
 
   /** Load persisted chat history so messages survive refresh */
   const fetchChatHistory = useCallback(async (recipientId: string | null) => {
-    const token = localStorage.getItem("token");
+    const token = getToken();
     console.log(
       "[ChatHistory] fetchChatHistory called, recipientId:",
       recipientId,
@@ -259,28 +260,23 @@ export default function ChatPage() {
   }, []);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    const storedUser = localStorage.getItem("user");
+    const token = getToken();
+    const storedUser = getUser();
 
     if (!token || !storedUser) {
       router.push("/login");
       return;
     }
 
-    try {
-      const parsedUser = JSON.parse(storedUser);
-      if (parsedUser.role !== "ADMIN") {
-        router.push("/login");
-        return;
-      }
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setUser(parsedUser);
-      fetchManufacturers();
-      connectWebSocket();
-      setIsLoading(false);
-    } catch {
+    if (!isAdmin()) {
       router.push("/login");
+      return;
     }
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setUser(storedUser);
+    fetchManufacturers();
+    connectWebSocket();
+    setIsLoading(false);
 
     return () => {
       if (wsRef.current) {
@@ -326,8 +322,7 @@ export default function ChatPage() {
     if (wsRef.current) {
       wsRef.current.close();
     }
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
+    clearAuth();
     router.push("/login");
   };
 

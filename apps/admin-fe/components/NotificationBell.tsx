@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { getToken } from "../utils/auth";
 
 interface Notification {
   id: string;
@@ -23,7 +24,7 @@ export function NotificationBell() {
   // Fetch notifications from API
   const fetchNotifications = async () => {
     try {
-      const token = localStorage.getItem("token");
+      const token = getToken();
       if (!token) return;
 
       const response = await fetch(
@@ -50,7 +51,7 @@ export function NotificationBell() {
   // Fetch unread count
   const fetchUnreadCount = async () => {
     try {
-      const token = localStorage.getItem("token");
+      const token = getToken();
       if (!token) return;
 
       const response = await fetch(
@@ -76,7 +77,7 @@ export function NotificationBell() {
   // Mark notification as read
   const markAsRead = async (notificationId: string) => {
     try {
-      const token = localStorage.getItem("token");
+      const token = getToken();
       if (!token) return;
 
       const response = await fetch(
@@ -105,7 +106,7 @@ export function NotificationBell() {
   // Mark all as read
   const markAllAsRead = async () => {
     try {
-      const token = localStorage.getItem("token");
+      const token = getToken();
       if (!token) return;
 
       const response = await fetch(
@@ -131,7 +132,7 @@ export function NotificationBell() {
 
   // Initialize WebSocket connection
   useEffect(() => {
-    const token = localStorage.getItem("token");
+    const token = getToken();
     if (!token) return;
 
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";

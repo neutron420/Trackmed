@@ -16,6 +16,7 @@ import { DataTable, StatusBadge } from "../../components/data-table";
 import { ActivityFeed } from "../../components/activity-feed";
 import { QuickAction, ProgressCard, AlertCard } from "../../components/cards";
 import { DashboardHeader } from "../../components/DashboardHeader";
+import { isAuthenticated, getToken, getUser, clearAuth } from "../../utils/auth";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
@@ -96,7 +97,7 @@ export default function DashboardPage() {
   });
 
   const fetchDashboardData = useCallback(async () => {
-    const token = localStorage.getItem("token");
+    const token = getToken();
     if (!token) return;
 
     const headers = { Authorization: `Bearer ${token}` };
@@ -185,25 +186,23 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    const storedUser = localStorage.getItem("user");
-
-    if (!token || !storedUser) {
+    if (!isAuthenticated()) {
+      clearAuth();
       router.push("/login");
       return;
     }
 
-    try {
-      setUser(JSON.parse(storedUser));
+    const currentUser = getUser();
+    if (currentUser) {
+      setUser(currentUser);
       fetchDashboardData().finally(() => setIsLoading(false));
-    } catch {
+    } else {
       router.push("/login");
     }
   }, [router, fetchDashboardData]);
 
   const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
+    clearAuth();
     router.push("/login");
   };
 

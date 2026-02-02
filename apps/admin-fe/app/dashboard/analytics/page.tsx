@@ -11,6 +11,7 @@ import {
   MultiLineChart,
 } from "../../../components/charts";
 import dynamic from "next/dynamic";
+import { getToken, getUser, clearAuth, isAuthenticated, isAdmin } from "../../../utils/auth";
 
 // Mapbox component - client-only
 const HeatMap = dynamic(
@@ -148,14 +149,7 @@ export default function AnalyticsPage() {
   const router = useRouter();
   const [user] = useState<User | null>(() => {
     if (typeof window !== "undefined") {
-      const storedUser = localStorage.getItem("user");
-      if (storedUser) {
-        try {
-          return JSON.parse(storedUser);
-        } catch {
-          return null;
-        }
-      }
+      return getUser();
     }
     return null;
   });
@@ -165,7 +159,7 @@ export default function AnalyticsPage() {
   const [dateRange, setDateRange] = useState("30d");
 
   const fetchAnalytics = useCallback(async () => {
-    const token = localStorage.getItem("token");
+    const token = getToken();
     if (!token) return;
 
     try {
@@ -740,14 +734,8 @@ export default function AnalyticsPage() {
   }, [dateRange]);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-
-    if (!token || !user) {
-      router.push("/login");
-      return;
-    }
-
-    if (user.role !== "ADMIN") {
+    if (!isAuthenticated() || !isAdmin()) {
+      clearAuth();
       router.push("/login");
       return;
     }
@@ -772,11 +760,10 @@ export default function AnalyticsPage() {
     return () => {
       isMounted = false;
     };
-  }, [router, fetchAnalytics, user]);
+  }, [router, fetchAnalytics]);
 
   const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
+    clearAuth();
     router.push("/login");
   };
 

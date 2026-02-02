@@ -617,7 +617,7 @@ export default function NewBatchPage() {
                   {imageUploading && (
                     <div className="mt-2 flex items-center gap-2 text-emerald-600">
                       <div className="h-3 w-3 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
-                      <span>Uploading to Cloudflare R2...</span>
+                      <span>Uploaded the image...</span>
                     </div>
                   )}
                   {imageUploadError && (

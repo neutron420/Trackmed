@@ -4,6 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
+import { setAuth } from "../../utils/auth";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
@@ -76,8 +77,7 @@ export default function AdminRegisterPage() {
 
       // Auto login after registration
       if (data.data?.token) {
-        localStorage.setItem("token", data.data.token);
-        localStorage.setItem("user", JSON.stringify(data.data.user));
+        setAuth(data.data.token, data.data.user);
       }
 
       setMessage("Registration successful. Redirecting...");

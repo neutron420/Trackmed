@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Sidebar } from "../../../components/sidebar";
+import { getToken, getUser, clearAuth, isAdmin } from "../../../utils/auth";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
@@ -21,36 +22,30 @@ export default function ReportsPage() {
   const [generating, setGenerating] = useState<string | null>(null);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    const storedUser = localStorage.getItem("user");
+    const token = getToken();
+    const storedUser = getUser();
 
     if (!token || !storedUser) {
       router.push("/login");
       return;
     }
 
-    try {
-      const parsedUser = JSON.parse(storedUser);
-      if (parsedUser.role !== "ADMIN") {
-        router.push("/login");
-        return;
-      }
-      setUser(parsedUser);
-      setIsLoading(false);
-    } catch {
+    if (!isAdmin()) {
       router.push("/login");
+      return;
     }
+    setUser(storedUser);
+    setIsLoading(false);
   }, [router]);
 
   const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
+    clearAuth();
     router.push("/login");
   };
 
   const generateReport = async (type: string) => {
     setGenerating(type);
-    const token = localStorage.getItem("token");
+    const token = getToken();
 
     try {
       const res = await fetch(`${API_BASE}/api/report/${type}`, {

@@ -87,7 +87,7 @@ router.post('/register', authLimiter, validate(schemas.register), async (req: Re
     const token = jwt.sign(
       { userId: user.id, role: user.role },
       JWT_SECRET,
-      { expiresIn: '24h' }
+      { expiresIn: '8h' }
     );
 
     res.status(201).json({
@@ -146,7 +146,7 @@ router.post('/login', authLimiter, validate(schemas.login), async (req: Request,
     const token = jwt.sign(
       { userId: user.id, role: user.role },
       JWT_SECRET,
-      { expiresIn: '24h' }
+      { expiresIn: '8h' }
     );
 
     res.json({

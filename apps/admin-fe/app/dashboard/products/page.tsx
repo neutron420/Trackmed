@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
 import { Sidebar } from "../../../components/sidebar";
 import { DataTable, StatusBadge } from "../../../components/data-table";
+import { getToken, getUser, clearAuth, isAuthenticated, isAdmin } from "../../../utils/auth";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
@@ -38,7 +39,7 @@ export default function ProductsPage() {
   const [search, setSearch] = useState("");
 
   const fetchMedicines = useCallback(async () => {
-    const token = localStorage.getItem("token");
+    const token = getToken();
     if (!token) return;
 
     try {
@@ -55,30 +56,23 @@ export default function ProductsPage() {
   }, []);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    const storedUser = localStorage.getItem("user");
-
-    if (!token || !storedUser) {
+    if (!isAuthenticated() || !isAdmin()) {
+      clearAuth();
       router.push("/login");
       return;
     }
 
-    try {
-      const parsedUser = JSON.parse(storedUser);
-      if (parsedUser.role !== "ADMIN") {
-        router.push("/login");
-        return;
-      }
-      setUser(parsedUser);
+    const currentUser = getUser();
+    if (currentUser) {
+      setUser(currentUser);
       fetchMedicines().finally(() => setIsLoading(false));
-    } catch {
+    } else {
       router.push("/login");
     }
   }, [router, fetchMedicines]);
 
   const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
+    clearAuth();
     router.push("/login");
   };
 
