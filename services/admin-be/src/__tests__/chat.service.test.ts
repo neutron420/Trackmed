@@ -219,12 +219,13 @@ describe("Chat Service", () => {
       expect(result.messages).toHaveLength(2);
 
       // Verify query checks where user is sender OR recipient
+      // Note: orderBy is "asc" to show messages in chronological order (oldest first)
       expect(mockFindMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: {
             OR: [{ senderId: "user-123" }, { recipientId: "user-123" }],
           },
-          orderBy: { createdAt: "desc" },
+          orderBy: { createdAt: "asc" },
         }),
       );
     });
