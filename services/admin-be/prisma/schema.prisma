@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -13,259 +7,508 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model addresses {
+  id             String   @id
+  user_id        String
+  label          String?
+  full_name      String
+  phone          String
+  address_line_1 String
+  address_line_2 String?
+  city           String
+  state          String
+  pincode        String
+  country        String   @default("India")
+  landmark       String?
+  is_default     Boolean  @default(false)
+  created_at     DateTime @default(now())
+  updated_at     DateTime
+  users          users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  orders         orders[]
 
-// User accounts and roles
-model User {
-  id            String   @id @default(cuid())
-  email         String   @unique
-  passwordHash  String   @map("password_hash")
-  name          String?
-  phone         String?
-  avatarUrl     String?  @map("avatar_url")
-  role          UserRole @default(SCANNER)
-  isActive      Boolean  @default(true) @map("is_active")
-  isEmailVerified Boolean @default(false) @map("is_email_verified")
-  isPhoneVerified Boolean @default(false) @map("is_phone_verified")
-  lastLoginAt   DateTime? @map("last_login_at")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
-
-  // Relations
-  scanLogs      ScanLog[]
-  fraudAlerts   FraudAlert[]
-  addresses     Address[]
-  cart          Cart?
-  orders        Order[]
-  refreshTokens RefreshToken[]
-  pushTokens    PushToken[]
-
-  @@index([role])
-  @@index([isActive])
-  @@index([createdAt])
-  @@index([email])
-  @@map("users")
+  @@index([is_default])
+  @@index([user_id])
 }
 
-enum UserRole {
-  ADMIN
-  SUPERADMIN
-  MANUFACTURER
-  DISTRIBUTOR
-  PHARMACY
-  SCANNER
-  CONSUMER
+model analytics {
+  id           String   @id
+  date         DateTime @db.Date
+  metric_type  String
+  metric_value Decimal  @db.Decimal(15, 2)
+  metadata     Json?
+  created_at   DateTime @default(now())
+
+  @@unique([date, metric_type])
+  @@index([date])
 }
 
-// Manufacturer textual details (NOT wallet - wallet is on blockchain)
-model Manufacturer {
-  id              String   @id @default(cuid())
-  name            String
-  licenseNumber   String   @unique @map("license_number")
-  address         String
-  city            String?
-  state           String?
-  country         String   @default("India")
-  phone           String?
-  email           String?
-  gstNumber       String?  @map("gst_number")
-  walletAddress   String   @unique @map("wallet_address") // Links to blockchain manufacturer_wallet
-  isVerified      Boolean  @default(false) @map("is_verified")
-  isActive        Boolean  @default(true) @map("is_active")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+model audit_trails {
+  id                String   @id
+  entity_type       String
+  entity_id         String
+  action            String
+  field_name        String?
+  old_value         String?
+  new_value         String?
+  performed_by      String
+  performed_by_role String?
+  metadata          Json?
+  created_at        DateTime @default(now())
 
-  // Relations
-  batches         Batch[]
-
-  @@index([name])
-  @@index([walletAddress])
-  @@index([isVerified])
-  @@index([isActive])
-  @@index([createdAt])
-  @@map("manufacturers")
+  @@index([created_at])
+  @@index([entity_type, entity_id])
+  @@index([performed_by])
 }
 
-// Medicine details (all business information)
-model Medicine {
-  id              String   @id @default(cuid())
-  name            String
-  genericName     String?  @map("generic_name")
-  strength        String
-  composition     String
-  dosageForm      String   @map("dosage_form") // Tablet, Capsule, Syrup, etc.
-  mrp             Decimal  @db.Decimal(10, 2)
-  storageCondition String? @map("storage_condition")
-  imageUrl        String?  @map("image_url")
-  description     String?  @db.Text
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+model batches {
+  id                 String          @id
+  batch_hash         String          @unique
+  manufacturing_date DateTime
+  expiry_date        DateTime
+  status             BatchStatus     @default(VALID)
+  created_at         DateTime        @default(now())
+  blockchain_tx_hash String?         @unique
+  blockchain_pda     String?         @unique
+  batch_number       String          @unique
+  manufacturer_id    String
+  medicine_id        String
+  quantity           Int
+  invoice_number     String?
+  invoice_date       DateTime?
+  gst_number         String?
+  warehouse_location String?
+  warehouse_address  String?
+  lifecycle_status   LifecycleStatus @default(IN_PRODUCTION)
+  updated_at         DateTime
+  distributor_id     String?
+  pharmacy_id        String?
+  remaining_quantity Int             @default(0)
+  image_url          String?
+  distributors       distributors?   @relation(fields: [distributor_id], references: [id])
+  manufacturers      manufacturers   @relation(fields: [manufacturer_id], references: [id])
+  medicines          medicines       @relation(fields: [medicine_id], references: [id])
+  pharmacies         pharmacies?     @relation(fields: [pharmacy_id], references: [id])
+  cart_items         cart_items[]
+  notifications      notifications[]
+  order_items        order_items[]
+  qr_codes           qr_codes[]
+  scan_logs          scan_logs[]
+  shipments          shipments[]
 
-  // Relations
-  batches         Batch[]
-
-  @@index([name])
-  @@index([genericName])
-  @@index([createdAt])
-  @@map("medicines")
-}
-
-// Batch - stores proof fields (same as blockchain) + all business details
-model Batch {
-  id                  String   @id @default(cuid())
-  
-  // Proof fields (stored on both blockchain and database)
-  batchHash           String   @unique @map("batch_hash") // Same as blockchain batch_hash
-  manufacturingDate   DateTime @map("manufacturing_date") // Same as blockchain
-  expiryDate          DateTime @map("expiry_date") // Same as blockchain
-  status              BatchStatus @default(VALID) // Same as blockchain (Valid/Recalled)
-  createdAt           DateTime @default(now()) @map("created_at") // Same as blockchain
-  
-  // Blockchain transaction reference
-  blockchainTxHash    String?  @unique @map("blockchain_tx_hash") // Transaction hash from blockchain registration
-  blockchainPda       String?  @unique @map("blockchain_pda") // PDA address on Solana
-  
-  // Business details (database only)
-  batchNumber         String   @unique @map("batch_number") // Human-readable batch number
-  manufacturerId      String   @map("manufacturer_id")
-  medicineId          String   @map("medicine_id")
-  quantity            Int
-  remainingQuantity   Int      @default(0) @map("remaining_quantity") // Track remaining units
-  invoiceNumber       String?  @map("invoice_number")
-  invoiceDate         DateTime? @map("invoice_date")
-  gstNumber           String?  @map("gst_number")
-  
-  // Warehouse and lifecycle info (database only)
-  warehouseLocation   String?  @map("warehouse_location")
-  warehouseAddress    String?  @map("warehouse_address") @db.Text
-  imageUrl            String?  @map("image_url") // Cloudflare R2 URL for batch image
-  lifecycleStatus     LifecycleStatus @default(IN_PRODUCTION) @map("lifecycle_status")
-  distributorId       String?  @map("distributor_id")
-  pharmacyId          String?  @map("pharmacy_id")
-  
-  // Timestamps
-  updatedAt           DateTime @updatedAt @map("updated_at")
-
-  // Relations
-  manufacturer        Manufacturer @relation(fields: [manufacturerId], references: [id])
-  medicine            Medicine @relation(fields: [medicineId], references: [id])
-  distributor         Distributor? @relation(fields: [distributorId], references: [id])
-  pharmacy            Pharmacy? @relation(fields: [pharmacyId], references: [id])
-  qrCodes            QRCode[]
-  scanLogs            ScanLog[]
-  cartItems           CartItem[]
-  orderItems          OrderItem[]
-  shipments           Shipment[]
-  notifications       Notification[]
-
-  @@index([batchHash])
-  @@index([manufacturerId])
-  @@index([medicineId])
-  @@index([blockchainTxHash])
-  @@index([distributorId])
-  @@index([pharmacyId])
-  @@index([lifecycleStatus])
+  @@index([batch_hash])
+  @@index([batch_number])
+  @@index([blockchain_tx_hash])
+  @@index([created_at])
+  @@index([distributor_id])
+  @@index([expiry_date])
+  @@index([lifecycle_status])
+  @@index([manufacturer_id])
+  @@index([medicine_id])
+  @@index([pharmacy_id])
   @@index([status])
-  @@index([expiryDate])
-  @@index([createdAt])
-  @@index([batchNumber])
-  @@map("batches")
+}
+
+model cart_items {
+  id         String   @id
+  cart_id    String
+  batch_id   String
+  quantity   Int      @default(1)
+  created_at DateTime @default(now())
+  updated_at DateTime
+  batches    batches  @relation(fields: [batch_id], references: [id])
+  carts      carts    @relation(fields: [cart_id], references: [id], onDelete: Cascade)
+
+  @@unique([cart_id, batch_id])
+  @@index([batch_id])
+  @@index([cart_id])
+}
+
+model carts {
+  id         String       @id
+  user_id    String       @unique
+  created_at DateTime     @default(now())
+  updated_at DateTime
+  cart_items cart_items[]
+  users      users        @relation(fields: [user_id], references: [id], onDelete: Cascade)
+}
+
+model chat_messages {
+  id                                      String   @id
+  sender_id                               String
+  recipient_id                            String?
+  message                                 String
+  created_at                              DateTime @default(now())
+  users_chat_messages_recipient_idTousers users?   @relation("chat_messages_recipient_idTousers", fields: [recipient_id], references: [id])
+  users_chat_messages_sender_idTousers    users    @relation("chat_messages_sender_idTousers", fields: [sender_id], references: [id], onDelete: Cascade)
+
+  @@index([created_at])
+  @@index([recipient_id])
+  @@index([sender_id])
+  @@index([sender_id, recipient_id])
+}
+
+model distributors {
+  id             String      @id
+  name           String
+  license_number String      @unique
+  address        String
+  city           String?
+  state          String?
+  country        String      @default("India")
+  phone          String?
+  email          String?
+  gst_number     String?
+  is_verified    Boolean     @default(false)
+  created_at     DateTime    @default(now())
+  updated_at     DateTime
+  is_active      Boolean     @default(true)
+  batches        batches[]
+  shipments      shipments[]
+
+  @@index([created_at])
+  @@index([is_active])
+  @@index([is_verified])
+  @@index([name])
+}
+
+model fraud_alerts {
+  id          String         @id
+  batch_id    String?
+  qr_code_id  String?
+  user_id     String?
+  alert_type  FraudAlertType
+  severity    FraudSeverity  @default(MEDIUM)
+  description String
+  evidence    Json?
+  is_resolved Boolean        @default(false)
+  resolved_at DateTime?
+  resolved_by String?
+  created_at  DateTime       @default(now())
+  updated_at  DateTime
+  users       users?         @relation(fields: [user_id], references: [id])
+
+  @@index([batch_id])
+  @@index([created_at])
+  @@index([is_resolved])
+  @@index([qr_code_id])
+}
+
+model manufacturers {
+  id             String    @id
+  name           String
+  license_number String    @unique
+  address        String
+  city           String?
+  state          String?
+  country        String    @default("India")
+  phone          String?
+  email          String?
+  gst_number     String?
+  wallet_address String    @unique
+  is_verified    Boolean   @default(false)
+  created_at     DateTime  @default(now())
+  updated_at     DateTime
+  is_active      Boolean   @default(true)
+  batches        batches[]
+
+  @@index([created_at])
+  @@index([is_active])
+  @@index([is_verified])
+  @@index([name])
+  @@index([wallet_address])
+}
+
+model medicines {
+  id                String    @id
+  name              String
+  generic_name      String?
+  strength          String
+  composition       String
+  dosage_form       String
+  mrp               Decimal   @db.Decimal(10, 2)
+  storage_condition String?
+  image_url         String?
+  description       String?
+  created_at        DateTime  @default(now())
+  updated_at        DateTime
+  batches           batches[]
+
+  @@index([created_at])
+  @@index([generic_name])
+  @@index([name])
+}
+
+model notifications {
+  id              String               @id
+  type            NotificationType
+  batch_id        String?
+  message         String
+  severity        NotificationSeverity
+  is_read         Boolean              @default(false)
+  read_at         DateTime?
+  metadata        Json?
+  target_roles    UserRole[]
+  target_user_ids String[]
+  created_at      DateTime             @default(now())
+  updated_at      DateTime
+  batches         batches?             @relation(fields: [batch_id], references: [id])
+
+  @@index([batch_id])
+  @@index([created_at])
+  @@index([is_read])
+  @@index([type])
+}
+
+model order_items {
+  id                String   @id
+  order_id          String
+  batch_id          String
+  medicine_name     String
+  medicine_strength String
+  quantity          Int
+  unit_price        Decimal  @db.Decimal(10, 2)
+  total_price       Decimal  @db.Decimal(10, 2)
+  created_at        DateTime @default(now())
+  batches           batches  @relation(fields: [batch_id], references: [id])
+  orders            orders   @relation(fields: [order_id], references: [id], onDelete: Cascade)
+
+  @@index([batch_id])
+  @@index([order_id])
+}
+
+model orders {
+  id                  String        @id
+  order_number        String        @unique
+  user_id             String
+  address_id          String
+  status              OrderStatus   @default(PENDING)
+  payment_status      PaymentStatus @default(PENDING)
+  payment_method      String?
+  payment_id          String?
+  subtotal            Decimal       @db.Decimal(10, 2)
+  tax                 Decimal       @default(0) @db.Decimal(10, 2)
+  delivery_fee        Decimal       @default(0) @db.Decimal(10, 2)
+  discount            Decimal       @default(0) @db.Decimal(10, 2)
+  total               Decimal       @db.Decimal(10, 2)
+  notes               String?
+  prescription_url    String?
+  estimated_delivery  DateTime?
+  delivered_at        DateTime?
+  cancelled_at        DateTime?
+  cancellation_reason String?
+  created_at          DateTime      @default(now())
+  updated_at          DateTime
+  order_items         order_items[]
+  addresses           addresses     @relation(fields: [address_id], references: [id])
+  users               users         @relation(fields: [user_id], references: [id])
+
+  @@index([created_at])
+  @@index([order_number])
+  @@index([payment_status])
+  @@index([status])
+  @@index([user_id])
+}
+
+model pharmacies {
+  id             String    @id
+  name           String
+  license_number String    @unique
+  address        String
+  city           String?
+  state          String?
+  country        String    @default("India")
+  phone          String?
+  email          String?
+  gst_number     String?
+  is_verified    Boolean   @default(false)
+  created_at     DateTime  @default(now())
+  updated_at     DateTime
+  image_url      String?
+  is_active      Boolean   @default(true)
+  batches        batches[]
+
+  @@index([created_at])
+  @@index([is_verified])
+  @@index([name])
+}
+
+model playing_with_neon {
+  id    Int    @id @default(autoincrement())
+  name  String
+  value Float? @db.Real
+}
+
+model push_tokens {
+  id           String   @id
+  user_id      String
+  player_id    String   @unique
+  device_type  String?
+  device_model String?
+  is_active    Boolean  @default(true)
+  created_at   DateTime @default(now())
+  updated_at   DateTime
+  users        users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([player_id])
+  @@index([user_id])
+}
+
+model qr_codes {
+  id          String      @id
+  code        String      @unique
+  batch_id    String
+  unit_number Int?
+  is_active   Boolean     @default(true)
+  created_at  DateTime    @default(now())
+  updated_at  DateTime
+  batches     batches     @relation(fields: [batch_id], references: [id])
+  scan_logs   scan_logs[]
+
+  @@index([batch_id])
+  @@index([code])
+}
+
+model refresh_tokens {
+  id          String   @id
+  token       String   @unique
+  user_id     String
+  device_id   String?
+  device_name String?
+  expires_at  DateTime
+  is_revoked  Boolean  @default(false)
+  created_at  DateTime @default(now())
+  users       users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([expires_at])
+  @@index([is_revoked])
+  @@index([token])
+  @@index([user_id])
+}
+
+model reports {
+  id            String       @id
+  report_number String       @unique
+  name          String
+  type          ReportType
+  status        ReportStatus @default(PENDING)
+  parameters    Json?
+  file_url      String?
+  file_size     Int?
+  format        String       @default("PDF")
+  generated_by  String
+  started_at    DateTime?
+  completed_at  DateTime?
+  error_message String?
+  created_at    DateTime     @default(now())
+  updated_at    DateTime
+
+  @@index([created_at])
+  @@index([generated_by])
+  @@index([status])
+  @@index([type])
+}
+
+model scan_logs {
+  id                  String   @id
+  qr_code_id          String
+  batch_id            String
+  user_id             String?
+  device_id           String?
+  device_model        String?
+  device_os           String?
+  app_version         String?
+  location_lat        Decimal? @db.Decimal(10, 8)
+  location_lng        Decimal? @db.Decimal(10, 8)
+  location_address    String?
+  scan_type           ScanType @default(VERIFICATION)
+  blockchain_verified Boolean  @default(false)
+  blockchain_status   String?
+  created_at          DateTime @default(now())
+  batches             batches  @relation(fields: [batch_id], references: [id])
+  qr_codes            qr_codes @relation(fields: [qr_code_id], references: [id])
+  users               users?   @relation(fields: [user_id], references: [id])
+
+  @@index([batch_id])
+  @@index([created_at])
+  @@index([qr_code_id])
+  @@index([user_id])
+}
+
+model shipment_tracking {
+  id          String         @id
+  shipment_id String
+  status      ShipmentStatus
+  location    String?
+  description String?
+  timestamp   DateTime       @default(now())
+  created_at  DateTime       @default(now())
+  shipments   shipments      @relation(fields: [shipment_id], references: [id], onDelete: Cascade)
+
+  @@index([shipment_id])
+  @@index([timestamp])
+}
+
+model shipments {
+  id                 String              @id
+  shipment_number    String              @unique
+  batch_id           String
+  distributor_id     String
+  quantity           Int
+  status             ShipmentStatus      @default(PENDING)
+  pickup_address     String?
+  delivery_address   String?
+  tracking_number    String?
+  carrier            String?
+  estimated_delivery DateTime?
+  shipped_at         DateTime?
+  delivered_at       DateTime?
+  notes              String?
+  created_by         String
+  created_at         DateTime            @default(now())
+  updated_at         DateTime
+  shipment_tracking  shipment_tracking[]
+  batches            batches             @relation(fields: [batch_id], references: [id])
+  distributors       distributors        @relation(fields: [distributor_id], references: [id])
+
+  @@index([batch_id])
+  @@index([created_at])
+  @@index([distributor_id])
+  @@index([status])
+}
+
+model users {
+  id                                              String           @id
+  email                                           String           @unique
+  password_hash                                   String
+  name                                            String?
+  role                                            UserRole         @default(SCANNER)
+  is_active                                       Boolean          @default(true)
+  created_at                                      DateTime         @default(now())
+  updated_at                                      DateTime
+  avatar_url                                      String?
+  is_email_verified                               Boolean          @default(false)
+  is_phone_verified                               Boolean          @default(false)
+  last_login_at                                   DateTime?
+  phone                                           String?
+  addresses                                       addresses[]
+  carts                                           carts?
+  chat_messages_chat_messages_recipient_idTousers chat_messages[]  @relation("chat_messages_recipient_idTousers")
+  chat_messages_chat_messages_sender_idTousers    chat_messages[]  @relation("chat_messages_sender_idTousers")
+  fraud_alerts                                    fraud_alerts[]
+  orders                                          orders[]
+  push_tokens                                     push_tokens[]
+  refresh_tokens                                  refresh_tokens[]
+  scan_logs                                       scan_logs[]
+
+  @@index([created_at])
+  @@index([email])
+  @@index([is_active])
+  @@index([role])
 }
 
 enum BatchStatus {
   VALID
   RECALLED
-}
-
-enum LifecycleStatus {
-  IN_PRODUCTION
-  IN_TRANSIT
-  AT_DISTRIBUTOR
-  AT_PHARMACY
-  SOLD
-  EXPIRED
-  RECALLED
-}
-
-// QR code mappings
-model QRCode {
-  id              String   @id @default(cuid())
-  code            String   @unique // The actual QR code string
-  batchId         String   @map("batch_id")
-  unitNumber      Int?     @map("unit_number") // Unit number within batch (1, 2, 3...)
-  isActive        Boolean  @default(true) @map("is_active")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
-
-  // Relations
-  batch           Batch @relation(fields: [batchId], references: [id])
-  scanLogs        ScanLog[]
-
-  @@index([code])
-  @@index([batchId])
-  @@map("qr_codes")
-}
-
-// Scan logs and device/location data
-model ScanLog {
-  id              String   @id @default(cuid())
-  qrCodeId        String   @map("qr_code_id")
-  batchId         String   @map("batch_id")
-  userId          String?  @map("user_id") // Optional - anonymous scans allowed
-  deviceId        String?  @map("device_id")
-  deviceModel     String?  @map("device_model")
-  deviceOS        String?  @map("device_os")
-  appVersion      String?  @map("app_version")
-  locationLat     Decimal? @map("location_lat") @db.Decimal(10, 8)
-  locationLng     Decimal? @map("location_lng") @db.Decimal(10, 8)
-  locationAddress String?  @map("location_address") @db.Text
-  scanType        ScanType @default(VERIFICATION) @map("scan_type")
-  blockchainVerified Boolean @default(false) @map("blockchain_verified") // Whether blockchain check passed
-  blockchainStatus String?  @map("blockchain_status") // Status from blockchain at time of scan
-  createdAt       DateTime @default(now()) @map("created_at")
-
-  // Relations
-  qrCode          QRCode @relation(fields: [qrCodeId], references: [id])
-  batch           Batch @relation(fields: [batchId], references: [id])
-  user            User? @relation(fields: [userId], references: [id])
-
-  @@index([qrCodeId])
-  @@index([batchId])
-  @@index([userId])
-  @@index([createdAt])
-  @@map("scan_logs")
-}
-
-enum ScanType {
-  VERIFICATION
-  PURCHASE
-  DISTRIBUTION
-  RECALL_CHECK
-}
-
-// Fraud alerts
-model FraudAlert {
-  id              String   @id @default(cuid())
-  batchId         String?  @map("batch_id")
-  qrCodeId        String?  @map("qr_code_id")
-  userId          String?  @map("user_id")
-  alertType       FraudAlertType @map("alert_type")
-  severity        FraudSeverity @default(MEDIUM)
-  description     String   @db.Text
-  evidence        Json?    // Additional evidence data
-  isResolved      Boolean  @default(false) @map("is_resolved")
-  resolvedAt      DateTime? @map("resolved_at")
-  resolvedBy      String?  @map("resolved_by")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
-
-  // Relations
-  user            User? @relation(fields: [userId], references: [id])
-
-  @@index([batchId])
-  @@index([qrCodeId])
-  @@index([isResolved])
-  @@index([createdAt])
-  @@map("fraud_alerts")
 }
 
 enum FraudAlertType {
@@ -286,340 +529,37 @@ enum FraudSeverity {
   CRITICAL
 }
 
-// Analytics and reports (aggregated data)
-model Analytics {
-  id              String   @id @default(cuid())
-  date            DateTime @db.Date
-  metricType      String   @map("metric_type")
-  metricValue     Decimal  @db.Decimal(15, 2) @map("metric_value")
-  metadata        Json?
-  createdAt       DateTime @default(now()) @map("created_at")
-
-  @@unique([date, metricType])
-  @@index([date])
-  @@map("analytics")
-}
-
-// Distributor details
-model Distributor {
-  id              String   @id @default(cuid())
-  name            String
-  licenseNumber   String   @unique @map("license_number")
-  address         String
-  city            String?
-  state           String?
-  country         String   @default("India")
-  phone           String?
-  email           String?
-  gstNumber       String?  @map("gst_number")
-  isVerified      Boolean  @default(false) @map("is_verified")
-  isActive        Boolean  @default(true) @map("is_active")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
-
-  // Relations
-  batches         Batch[]
-  shipments       Shipment[]
-
-  @@index([name])
-  @@index([isVerified])
-  @@index([isActive])
-  @@index([createdAt])
-  @@map("distributors")
-}
-
-// Pharmacy details
-model Pharmacy {
-  id              String   @id @default(cuid())
-  name            String
-  licenseNumber   String   @unique @map("license_number")
-  address         String
-  city            String?
-  state           String?
-  country         String   @default("India")
-  phone           String?
-  email           String?
-  gstNumber       String?  @map("gst_number")
-  imageUrl        String?  @map("image_url") // R2 storage URL for pharmacy photo
-  isVerified      Boolean  @default(false) @map("is_verified")
-  isActive        Boolean  @default(true) @map("is_active")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
-
-  // Relations
-  batches         Batch[]
-
-  @@index([name])
-  @@index([isVerified])
-  @@index([createdAt])
-  @@map("pharmacies")
-}
-
-// Audit trail for tracking all changes
-model AuditTrail {
-  id              String   @id @default(cuid())
-  entityType      String   @map("entity_type") // 'BATCH', 'MANUFACTURER', 'MEDICINE', etc.
-  entityId        String   @map("entity_id")
-  action          String   // 'CREATE', 'UPDATE', 'DELETE', 'STATUS_CHANGE', 'LIFECYCLE_CHANGE'
-  fieldName       String?  @map("field_name")
-  oldValue        String?  @map("old_value") @db.Text
-  newValue        String?  @map("new_value") @db.Text
-  performedBy     String   @map("performed_by") // User ID
-  performedByRole String?  @map("performed_by_role")
-  metadata        Json?    // Additional context
-  createdAt       DateTime @default(now()) @map("created_at")
-
-  @@index([entityType, entityId])
-  @@index([performedBy])
-  @@index([createdAt])
-  @@map("audit_trails")
-}
-
-// Shipment tracking
-model Shipment {
-  id                String          @id @default(cuid())
-  shipmentNumber    String          @unique @map("shipment_number")
-  batchId           String          @map("batch_id")
-  distributorId     String          @map("distributor_id")
-  quantity          Int
-  status            ShipmentStatus  @default(PENDING)
-  pickupAddress     String?         @map("pickup_address") @db.Text
-  deliveryAddress   String?         @map("delivery_address") @db.Text
-  trackingNumber    String?         @map("tracking_number")
-  carrier           String?
-  estimatedDelivery DateTime?       @map("estimated_delivery")
-  shippedAt         DateTime?       @map("shipped_at")
-  deliveredAt       DateTime?       @map("delivered_at")
-  notes             String?         @db.Text
-  createdBy         String          @map("created_by")
-  createdAt         DateTime        @default(now()) @map("created_at")
-  updatedAt         DateTime        @updatedAt @map("updated_at")
-
-  // Relations
-  batch             Batch           @relation(fields: [batchId], references: [id])
-  distributor       Distributor     @relation(fields: [distributorId], references: [id])
-  trackingHistory   ShipmentTracking[]
-
-  @@index([batchId])
-  @@index([distributorId])
-  @@index([status])
-  @@index([createdAt])
-  @@map("shipments")
-}
-
-// Shipment tracking history
-model ShipmentTracking {
-  id              String    @id @default(cuid())
-  shipmentId      String    @map("shipment_id")
-  status          ShipmentStatus
-  location        String?
-  description     String?   @db.Text
-  timestamp       DateTime  @default(now())
-  createdAt       DateTime  @default(now()) @map("created_at")
-
-  // Relations
-  shipment        Shipment  @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
-
-  @@index([shipmentId])
-  @@index([timestamp])
-  @@map("shipment_tracking")
-}
-
-enum ShipmentStatus {
-  PENDING
-  PICKED_UP
+enum LifecycleStatus {
+  IN_PRODUCTION
   IN_TRANSIT
-  OUT_FOR_DELIVERY
-  DELIVERED
-  CANCELLED
-  RETURNED
+  AT_DISTRIBUTOR
+  AT_PHARMACY
+  SOLD
+  EXPIRED
+  RECALLED
 }
 
-// Report generation
-model Report {
-  id              String        @id @default(cuid())
-  reportNumber    String        @unique @map("report_number")
-  name            String
-  type            ReportType
-  status          ReportStatus  @default(PENDING)
-  parameters      Json?         // Report parameters/filters
-  fileUrl         String?       @map("file_url")
-  fileSize        Int?          @map("file_size")
-  format          String        @default("PDF") // PDF, CSV, EXCEL
-  generatedBy     String        @map("generated_by")
-  startedAt       DateTime?     @map("started_at")
-  completedAt     DateTime?     @map("completed_at")
-  errorMessage    String?       @map("error_message") @db.Text
-  createdAt       DateTime      @default(now()) @map("created_at")
-  updatedAt       DateTime      @updatedAt @map("updated_at")
-
-  @@index([type])
-  @@index([status])
-  @@index([generatedBy])
-  @@index([createdAt])
-  @@map("reports")
+enum NotificationSeverity {
+  INFO
+  WARNING
+  ERROR
+  CRITICAL
 }
 
-enum ReportType {
-  PRODUCTION
-  INVENTORY
-  SALES
-  QUALITY
-  VERIFICATION
-  EXPIRY
-  DISTRIBUTOR
-  BATCH_SUMMARY
-  FRAUD_ANALYSIS
-}
-
-enum ReportStatus {
-  PENDING
-  GENERATING
-  COMPLETED
-  FAILED
-}
-
-// ============================================
-// CONSUMER APP MODELS (user-be)
-// ============================================
-
-// Refresh tokens for JWT authentication
-model RefreshToken {
-  id          String   @id @default(cuid())
-  token       String   @unique
-  userId      String   @map("user_id")
-  deviceId    String?  @map("device_id")
-  deviceName  String?  @map("device_name")
-  expiresAt   DateTime @map("expires_at")
-  isRevoked   Boolean  @default(false) @map("is_revoked")
-  createdAt   DateTime @default(now()) @map("created_at")
-
-  // Relations
-  user        User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([token])
-  @@index([expiresAt])
-  @@index([isRevoked])
-  @@map("refresh_tokens")
-}
-
-// User addresses for delivery
-model Address {
-  id              String   @id @default(cuid())
-  userId          String   @map("user_id")
-  label           String?  // "Home", "Work", etc.
-  fullName        String   @map("full_name")
-  phone           String
-  addressLine1    String   @map("address_line_1")
-  addressLine2    String?  @map("address_line_2")
-  city            String
-  state           String
-  pincode         String
-  country         String   @default("India")
-  landmark        String?
-  isDefault       Boolean  @default(false) @map("is_default")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
-
-  // Relations
-  user            User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  orders          Order[]
-
-  @@index([userId])
-  @@index([isDefault])
-  @@map("addresses")
-}
-
-// Shopping cart
-model Cart {
-  id              String   @id @default(cuid())
-  userId          String   @unique @map("user_id")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
-
-  // Relations
-  user            User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  items           CartItem[]
-
-  @@map("carts")
-}
-
-// Cart items
-model CartItem {
-  id              String   @id @default(cuid())
-  cartId          String   @map("cart_id")
-  batchId         String   @map("batch_id")
-  quantity        Int      @default(1)
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
-
-  // Relations
-  cart            Cart @relation(fields: [cartId], references: [id], onDelete: Cascade)
-  batch           Batch @relation(fields: [batchId], references: [id])
-
-  @@unique([cartId, batchId])
-  @@index([cartId])
-  @@index([batchId])
-  @@map("cart_items")
-}
-
-// Orders
-model Order {
-  id              String      @id @default(cuid())
-  orderNumber     String      @unique @map("order_number")
-  userId          String      @map("user_id")
-  addressId       String      @map("address_id")
-  status          OrderStatus @default(PENDING)
-  paymentStatus   PaymentStatus @default(PENDING) @map("payment_status")
-  paymentMethod   String?     @map("payment_method")
-  paymentId       String?     @map("payment_id") // Razorpay/payment gateway ID
-  subtotal        Decimal     @db.Decimal(10, 2)
-  tax             Decimal     @default(0) @db.Decimal(10, 2)
-  deliveryFee     Decimal     @default(0) @db.Decimal(10, 2) @map("delivery_fee")
-  discount        Decimal     @default(0) @db.Decimal(10, 2)
-  total           Decimal     @db.Decimal(10, 2)
-  notes           String?     @db.Text
-  prescriptionUrl String?     @map("prescription_url") // If prescription required
-  estimatedDelivery DateTime? @map("estimated_delivery")
-  deliveredAt     DateTime?   @map("delivered_at")
-  cancelledAt     DateTime?   @map("cancelled_at")
-  cancellationReason String?  @map("cancellation_reason") @db.Text
-  createdAt       DateTime    @default(now()) @map("created_at")
-  updatedAt       DateTime    @updatedAt @map("updated_at")
-
-  // Relations
-  user            User @relation(fields: [userId], references: [id])
-  address         Address @relation(fields: [addressId], references: [id])
-  items           OrderItem[]
-
-  @@index([userId])
-  @@index([orderNumber])
-  @@index([status])
-  @@index([paymentStatus])
-  @@index([createdAt])
-  @@map("orders")
-}
-
-// Order items
-model OrderItem {
-  id              String   @id @default(cuid())
-  orderId         String   @map("order_id")
-  batchId         String   @map("batch_id")
-  medicineName    String   @map("medicine_name") // Snapshot at time of order
-  medicineStrength String  @map("medicine_strength")
-  quantity        Int
-  unitPrice       Decimal  @db.Decimal(10, 2) @map("unit_price")
-  totalPrice      Decimal  @db.Decimal(10, 2) @map("total_price")
-  createdAt       DateTime @default(now()) @map("created_at")
-
-  // Relations
-  order           Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  batch           Batch @relation(fields: [batchId], references: [id])
-
-  @@index([orderId])
-  @@index([batchId])
-  @@map("order_items")
+enum NotificationType {
+  FRAUD_ALERT
+  BATCH_RECALL
+  BATCH_CREATED
+  EXPIRY_WARNING
+  LIFECYCLE_CHANGE
+  LOW_STOCK
+  STATUS_CHANGE
+  SYSTEM
+  BATCH_STATUS_CHANGED
+  MANUFACTURER_OPERATION
+  ADMIN_ACTION
+  MANUFACTURER_VERIFIED
+  MANUFACTURER_UPDATED
 }
 
 enum OrderStatus {
@@ -641,69 +581,48 @@ enum PaymentStatus {
   PARTIALLY_REFUNDED
 }
 
-// Push notification tokens (OneSignal player IDs)
-model PushToken {
-  id          String   @id @default(cuid())
-  userId      String   @map("user_id")
-  playerId    String   @unique @map("player_id") // OneSignal player ID
-  deviceType  String?  @map("device_type") // android, ios
-  deviceModel String?  @map("device_model")
-  isActive    Boolean  @default(true) @map("is_active")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-
-  // Relations
-  user        User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([playerId])
-  @@map("push_tokens")
+enum ReportStatus {
+  PENDING
+  GENERATING
+  COMPLETED
+  FAILED
 }
 
-// In-app notifications
-model Notification {
-  id          String             @id @default(cuid())
-  type        NotificationType
-  batchId     String?            @map("batch_id")
-  message     String
-  severity    NotificationSeverity
-  isRead      Boolean            @default(false) @map("is_read")
-  readAt      DateTime?          @map("read_at")
-  metadata    Json?              // Additional data (manufacturerId, medicineId, etc.)
-  targetRoles UserRole[]         @map("target_roles")
-  targetUserIds String[]         @map("target_user_ids") // Array of user IDs
-  createdAt   DateTime           @default(now()) @map("created_at")
-  updatedAt   DateTime           @updatedAt @map("updated_at")
-
-  // Relations
-  batch       Batch?             @relation(fields: [batchId], references: [id], onDelete: SetNull)
-
-  @@index([batchId])
-  @@index([isRead])
-  @@index([createdAt])
-  @@index([type])
-  @@map("notifications")
+enum ReportType {
+  PRODUCTION
+  INVENTORY
+  SALES
+  QUALITY
+  VERIFICATION
+  EXPIRY
+  DISTRIBUTOR
+  BATCH_SUMMARY
+  FRAUD_ANALYSIS
 }
 
-enum NotificationType {
-  FRAUD_ALERT
-  BATCH_RECALL
-  BATCH_CREATED
-  BATCH_STATUS_CHANGED
-  EXPIRY_WARNING
-  LIFECYCLE_CHANGE
-  LOW_STOCK
-  STATUS_CHANGE
-  MANUFACTURER_OPERATION
-  ADMIN_ACTION
-  MANUFACTURER_VERIFIED
-  MANUFACTURER_UPDATED
-  SYSTEM
+enum ScanType {
+  VERIFICATION
+  PURCHASE
+  DISTRIBUTION
+  RECALL_CHECK
 }
 
-enum NotificationSeverity {
-  INFO
-  WARNING
-  ERROR
-  CRITICAL
+enum ShipmentStatus {
+  PENDING
+  PICKED_UP
+  IN_TRANSIT
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+  RETURNED
+}
+
+enum UserRole {
+  ADMIN
+  MANUFACTURER
+  DISTRIBUTOR
+  PHARMACY
+  SCANNER
+  CONSUMER
+  SUPERADMIN
 }

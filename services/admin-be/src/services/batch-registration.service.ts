@@ -11,6 +11,7 @@ import {
 import { IDL } from "../idl/solana_test_project";
 import { createAuditTrail } from "./audit-trail.service";
 import { sendNotification } from "./notification.service";
+import { ensureManufacturerOnBlockchain } from "./manufacturer-blockchain.service";
 
 export interface BatchRegistrationData {
   // Proof fields (stored on both blockchain and database)
@@ -202,7 +203,22 @@ export async function registerBatch(
       ? Math.round(Number(medicine.mrp) * 100)
       : 100;
 
-    // Step 2: Register on blockchain first (best-effort)
+    // Step 2: Ensure manufacturer is registered on blockchain first
+    const manufacturerRegistration = await ensureManufacturerOnBlockchain(manufacturerWallet);
+    if (!manufacturerRegistration.success) {
+      console.error(
+        "[BatchRegistration] Failed to register manufacturer on blockchain:",
+        manufacturerRegistration.error
+      );
+      // Continue anyway - blockchain is best-effort
+    } else if (!manufacturerRegistration.alreadyRegistered) {
+      console.log(
+        "[BatchRegistration] Manufacturer registered on blockchain:",
+        manufacturerRegistration.txHash
+      );
+    }
+
+    // Step 3: Register batch on blockchain (best-effort)
     const blockchainResult = await registerBatchOnBlockchain(
       manufacturerWallet,
       data.batchHash,
@@ -224,7 +240,7 @@ export async function registerBatch(
       );
     }
 
-    // Step 3: Store in database with proof fields + business details
+    // Step 4: Store in database with proof fields + business details
     const batch = await prisma.batch.create({
       data: {
         // Proof fields (same as blockchain)

@@ -1,6 +1,7 @@
 import { WebSocketClient } from '../types/websocket';
 import { clientManager } from './client-manager';
 import prisma from '../config/database';
+import { saveChatMessage } from '../services/chat.service';
 
 // Local UserRole type mirroring Prisma enum `UserRole`
 type UserRoleType =
@@ -73,6 +74,17 @@ export async function handleChatMessage(
       };
     }
 
+    // Persist first so history survives refresh even when recipient is offline
+    const timestamp = payload.timestamp ? new Date(payload.timestamp) : new Date();
+    await saveChatMessage({
+      senderId: senderUserId,
+      senderName: sender.name || sender.email,
+      senderRole: sender.role,
+      recipientId: payload.recipientId,
+      message: payload.message,
+      timestamp,
+    });
+
     const chatData = {
       type: 'CHAT_RECEIVED' as const,
       payload: {
@@ -90,16 +102,9 @@ export async function handleChatMessage(
 
     if (payload.recipientId) {
       const recipientClients = allClients.filter(
-        (client) => client.userId === payload.recipientId && 
+        (client) => client.userId === payload.recipientId &&
                    (client.role === 'ADMIN' || client.role === 'MANUFACTURER')
       );
-
-      if (recipientClients.length === 0) {
-        return {
-          success: false,
-          error: 'Recipient not connected or not authorized',
-        };
-      }
 
       recipientClients.forEach((client) => {
         if (client.socket.readyState === 1) {
@@ -118,9 +123,15 @@ export async function handleChatMessage(
         });
       }
 
-      console.log(
-        `Chat message sent from ${senderUserId} (${senderRole}) to ${payload.recipientId}`
-      );
+      if (recipientClients.length === 0) {
+        console.log(
+          `Chat message saved (recipient offline) from ${senderUserId} to ${payload.recipientId}`
+        );
+      } else {
+        console.log(
+          `Chat message sent from ${senderUserId} (${senderRole}) to ${payload.recipientId}`
+        );
+      }
     } else {
       const adminAndManufacturerClients = allClients.filter(
         (client) => client.role === 'ADMIN' || client.role === 'MANUFACTURER'

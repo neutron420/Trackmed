@@ -1,6 +1,6 @@
 import prisma from '../config/database';
 
-// Chat message interface
+// Chat message interface (for saving)
 export interface ChatMessageData {
   senderId: string;
   senderName: string;
@@ -11,49 +11,101 @@ export interface ChatMessageData {
 }
 
 /**
- * Save chat message to database
+ * Save chat message to database (persists so history survives refresh)
  */
 export async function saveChatMessage(data: ChatMessageData) {
   try {
-    // Check if ChatMessage model exists, if not use a simple storage approach
-    const message = await prisma.$queryRaw`
-      INSERT INTO chat_messages (id, sender_id, sender_name, sender_role, recipient_id, message, created_at)
-      VALUES (gen_random_uuid(), ${data.senderId}, ${data.senderName}, ${data.senderRole}, ${data.recipientId || null}, ${data.message}, ${data.timestamp})
-      ON CONFLICT DO NOTHING
-      RETURNING *
-    `.catch(() => null);
-
-    return { success: true, message };
+    await prisma.chatMessage.create({
+      data: {
+        senderId: data.senderId,
+        recipientId: data.recipientId || null,
+        message: data.message,
+      },
+    });
+    return { success: true };
   } catch (error: any) {
-    // If table doesn't exist, just log and continue (messages still go through WebSocket)
-    console.log('Chat message not persisted (table may not exist):', error.message);
+    console.error('Failed to persist chat message:', error);
     return { success: false, error: error.message };
   }
 }
 
 /**
- * Get chat history
+ * Get chat history for a conversation (1:1) or all messages for user
+ * When recipientId is set: returns messages between userId and recipientId, oldest first.
  */
 export async function getChatHistory(params: {
-  userId?: string;
+  userId: string;
   recipientId?: string;
   limit?: number;
   offset?: number;
 }) {
   try {
-    const limit = params.limit || 50;
-    const offset = params.offset || 0;
+    const limit = Math.min(params.limit ?? 50, 200);
+    const offset = params.offset ?? 0;
 
-    // Try to fetch from database
-    const messages = await prisma.$queryRaw`
-      SELECT * FROM chat_messages 
-      WHERE (sender_id = ${params.userId} OR recipient_id = ${params.userId} OR recipient_id IS NULL)
-      ORDER BY created_at DESC
-      LIMIT ${limit} OFFSET ${offset}
-    `.catch(() => []);
+    if (params.recipientId) {
+      // 1:1 conversation: (A->B) or (B->A)
+      const messages = await prisma.chatMessage.findMany({
+        where: {
+          OR: [
+            { senderId: params.userId, recipientId: params.recipientId },
+            { senderId: params.recipientId, recipientId: params.userId },
+          ],
+        },
+        orderBy: { createdAt: 'asc' },
+        take: limit,
+        skip: offset,
+        include: {
+          sender: {
+            select: { id: true, name: true, email: true, role: true },
+          },
+        },
+      });
 
-    return { success: true, messages };
+      const list = messages.map((m) => ({
+        id: m.id,
+        message: m.message,
+        senderId: m.senderId,
+        senderName: m.sender.name || m.sender.email,
+        senderRole: m.sender.role,
+        recipientId: m.recipientId ?? undefined,
+        timestamp: m.createdAt.toISOString(),
+      }));
+
+      return { success: true, messages: list };
+    }
+
+    // No recipient: return recent messages where user is sender or recipient
+    const messages = await prisma.chatMessage.findMany({
+      where: {
+        OR: [
+          { senderId: params.userId },
+          { recipientId: params.userId },
+        ],
+      },
+      orderBy: { createdAt: 'asc' },
+      take: limit,
+      skip: offset,
+      include: {
+        sender: {
+          select: { id: true, name: true, email: true, role: true },
+        },
+      },
+    });
+
+    const list = messages.map((m) => ({
+      id: m.id,
+      message: m.message,
+      senderId: m.senderId,
+      senderName: m.sender.name || m.sender.email,
+      senderRole: m.sender.role,
+      recipientId: m.recipientId ?? undefined,
+      timestamp: m.createdAt.toISOString(),
+    }));
+
+    return { success: true, messages: list };
   } catch (error: any) {
+    console.error('Failed to get chat history:', error);
     return { success: false, error: error.message, messages: [] };
   }
 }
@@ -62,7 +114,6 @@ export async function getChatHistory(params: {
  * Get online users for chat
  */
 export async function getOnlineUsers() {
-  // Get all users who can chat (ADMIN and MANUFACTURER)
   const users = await prisma.user.findMany({
     where: {
       role: {
@@ -82,7 +133,6 @@ export async function getOnlineUsers() {
     name: u.name || u.email,
     email: u.email,
     role: u.role,
-    // Online status would come from WebSocket client manager
     isOnline: false,
   }));
 }

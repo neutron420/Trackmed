@@ -46,7 +46,7 @@ interface Message {
 
 export default function ChatPage() {
   const router = useRouter();
-  
+
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [chatUsers, setChatUsers] = useState<ChatUser[]>([]);
@@ -57,6 +57,7 @@ export default function ChatPage() {
   const [isConnected, setIsConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const initialSelectionApplied = useRef(false);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -74,20 +75,25 @@ export default function ChatPage() {
     ws.onopen = () => {
       console.log("WebSocket connected");
       // Send authentication
-      ws.send(JSON.stringify({
-        type: "AUTH",
-        payload: { token },
-      }));
+      ws.send(
+        JSON.stringify({
+          type: "AUTH",
+          payload: { token },
+        }),
+      );
     };
 
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        
+
         if (data.type === "AUTH" && data.payload?.success) {
           setIsConnected(true);
           console.log("WebSocket authenticated:", data.payload);
-        } else if (data.type === "ERROR" || (data.type === "AUTH" && !data.payload?.success)) {
+        } else if (
+          data.type === "ERROR" ||
+          (data.type === "AUTH" && !data.payload?.success)
+        ) {
           console.error("WebSocket error:", data.error || data.payload?.error);
           setIsConnected(false);
         } else if (data.type === "CHAT_RECEIVED") {
@@ -102,8 +108,16 @@ export default function ChatPage() {
             timestamp: chatData.timestamp,
             isMine: chatData.senderId === currentUser.id,
           };
-          
-          setMessages((prev) => [...prev, newMsg]);
+
+          setMessages((prev) => {
+            const next = [...prev, newMsg];
+            next.sort(
+              (a, b) =>
+                new Date(a.timestamp).getTime() -
+                new Date(b.timestamp).getTime(),
+            );
+            return next;
+          });
         }
       } catch (error) {
         console.error("Failed to parse WebSocket message:", error);
@@ -140,11 +154,100 @@ export default function ChatPage() {
       const data = await res.json();
       if (data.success) {
         setChatUsers(data.data || []);
+
+        // Restore last selected conversation after reload/login
+        if (!initialSelectionApplied.current) {
+          const saved = localStorage.getItem("manufacturer-chat-last-target");
+          if (saved === "all") {
+            setSelectedUser(null);
+          } else if (saved) {
+            const match = (data.data || []).find((u: ChatUser) => u.id === saved);
+            setSelectedUser(match ?? null);
+          }
+          initialSelectionApplied.current = true;
+        }
       }
     } catch (error) {
       console.error("Failed to fetch chat users:", error);
     }
   }, []);
+
+  const selectedUserRef = useRef<ChatUser | null>(null);
+  selectedUserRef.current = selectedUser;
+
+  /** Load persisted chat history so messages survive refresh */
+  const fetchChatHistory = useCallback(
+    async (recipientId: string | null, currentUserId: string) => {
+      const token = localStorage.getItem("token");
+      console.log(
+        "[ChatHistory] fetchChatHistory called, recipientId:",
+        recipientId,
+        "userId:",
+        currentUserId,
+        "token exists:",
+        !!token,
+      );
+      if (!token) return;
+
+      const requestKey = recipientId ?? "all";
+      try {
+        const url = recipientId
+          ? `${API_BASE}/api/chat/history?recipientId=${encodeURIComponent(
+              recipientId,
+            )}&limit=100`
+          : `${API_BASE}/api/chat/history?limit=50`;
+        console.log("[ChatHistory] Fetching from:", url);
+        const res = await fetch(url, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json();
+        console.log("[ChatHistory] API Response:", data);
+        // Only apply if we're still viewing the same conversation (avoid stale response overwriting)
+        const currentKey = selectedUserRef.current?.id ?? "all";
+        if (currentKey !== requestKey) {
+          console.log(
+            "[ChatHistory] Skipping stale response, currentKey:",
+            currentKey,
+            "requestKey:",
+            requestKey,
+          );
+          return;
+        }
+        if (data.success && Array.isArray(data.data)) {
+          const list: Message[] = data.data.map((m: any) => ({
+            id: m.id,
+            senderId: m.senderId,
+            senderName: m.senderName ?? m.senderId,
+            senderRole: m.senderRole ?? "",
+            recipientId: m.recipientId,
+            message: m.message,
+            timestamp: m.timestamp ?? m.createdAt,
+            isMine: m.senderId === currentUserId,
+          }));
+          list.sort(
+            (a, b) =>
+              new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+          );
+          console.log(
+            "[ChatHistory] Setting messages:",
+            list.length,
+            "messages",
+          );
+          setMessages(list);
+        } else {
+          console.log(
+            "[ChatHistory] No data or not success, clearing messages",
+          );
+          setMessages([]);
+        }
+      } catch (error) {
+        console.error("Failed to fetch chat history:", error);
+        if ((selectedUserRef.current?.id ?? "all") === requestKey)
+          setMessages([]);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -170,6 +273,22 @@ export default function ChatPage() {
     };
   }, [router, fetchChatUsers, connectWebSocket]);
 
+  // Load persisted chat history when selecting a user (or "All") so messages survive refresh
+  useEffect(() => {
+    if (!user?.id) return;
+    fetchChatHistory(selectedUser?.id ?? null, user.id);
+  }, [selectedUser?.id, user?.id, fetchChatHistory]);
+
+  // Persist last selected conversation to reopen it automatically
+  useEffect(() => {
+    if (!initialSelectionApplied.current) return;
+    if (selectedUser === null) {
+      localStorage.setItem("manufacturer-chat-last-target", "all");
+    } else {
+      localStorage.setItem("manufacturer-chat-last-target", selectedUser.id);
+    }
+  }, [selectedUser]);
+
   const handleLogout = () => {
     wsRef.current?.close();
     localStorage.removeItem("token");
@@ -178,7 +297,11 @@ export default function ChatPage() {
   };
 
   const sendMessage = () => {
-    if (!newMessage.trim() || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+    if (
+      !newMessage.trim() ||
+      !wsRef.current ||
+      wsRef.current.readyState !== WebSocket.OPEN
+    ) {
       return;
     }
 
@@ -205,14 +328,14 @@ export default function ChatPage() {
   const filteredUsers = chatUsers.filter(
     (u) =>
       u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      u.email.toLowerCase().includes(searchQuery.toLowerCase())
+      u.email.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
   const filteredMessages = selectedUser
     ? messages.filter(
         (m) =>
           (m.senderId === selectedUser.id && m.recipientId === user?.id) ||
-          (m.senderId === user?.id && m.recipientId === selectedUser.id)
+          (m.senderId === user?.id && m.recipientId === selectedUser.id),
       )
     : messages.filter((m) => !m.recipientId); // Broadcast messages
 
@@ -226,255 +349,266 @@ export default function ChatPage() {
 
   return (
     <div>
-
-        <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur-sm">
-          <div className="flex items-center justify-between px-5 py-3">
-            <div className="flex items-center gap-3">
-              <FiMessageCircle className="h-5 w-5 text-emerald-600" />
-              <div>
-                <h1 className="text-lg font-semibold text-slate-900">Chat</h1>
-                <p className="text-xs text-slate-500">
-                  Communicate with team members
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2">
-                <FiCircle
-                  className={`h-2 w-2 ${
-                    isConnected ? "fill-emerald-500 text-emerald-500" : "fill-red-500 text-red-500"
-                  }`}
-                />
-                <span className="text-xs text-slate-500">
-                  {isConnected ? "Connected" : "Disconnected"}
-                </span>
-              </div>
-              <button
-                onClick={fetchChatUsers}
-                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
-              >
-                <FiRefreshCw className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-        </header>
-
-        <div className="flex h-[calc(100vh-65px)]">
-          {/* Users Sidebar */}
-          <div className="w-72 border-r border-slate-200 bg-white">
-            <div className="p-3">
-              <div className="relative">
-                <FiSearch className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Search users..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-10 pr-4 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                />
-              </div>
-            </div>
-
-            {/* Broadcast Option */}
-            <div
-              onClick={() => setSelectedUser(null)}
-              className={`mx-3 mb-2 cursor-pointer rounded-lg p-3 transition ${
-                selectedUser === null
-                  ? "bg-emerald-50 border border-emerald-200"
-                  : "hover:bg-slate-50"
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100">
-                  <FiUsers className="h-5 w-5 text-emerald-600" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-slate-900">Broadcast</p>
-                  <p className="text-xs text-slate-500">Send to all team</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="px-3 py-2">
-              <p className="text-xs font-medium uppercase text-slate-400">
-                Team Members ({filteredUsers.length})
+      <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur-sm">
+        <div className="flex items-center justify-between px-5 py-3">
+          <div className="flex items-center gap-3">
+            <FiMessageCircle className="h-5 w-5 text-emerald-600" />
+            <div>
+              <h1 className="text-lg font-semibold text-slate-900">Chat</h1>
+              <p className="text-xs text-slate-500">
+                Communicate with team members
               </p>
             </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <FiCircle
+                className={`h-2 w-2 ${
+                  isConnected
+                    ? "fill-emerald-500 text-emerald-500"
+                    : "fill-red-500 text-red-500"
+                }`}
+              />
+              <span className="text-xs text-slate-500">
+                {isConnected ? "Connected" : "Disconnected"}
+              </span>
+            </div>
+            <button
+              onClick={fetchChatUsers}
+              className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+            >
+              <FiRefreshCw className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      </header>
 
-            <div className="overflow-y-auto" style={{ maxHeight: "calc(100vh - 220px)" }}>
-              {filteredUsers.map((chatUser) => (
-                <div
-                  key={chatUser.id}
-                  onClick={() => setSelectedUser(chatUser)}
-                  className={`mx-3 mb-2 cursor-pointer rounded-lg p-3 transition ${
-                    selectedUser?.id === chatUser.id
-                      ? "bg-emerald-50 border border-emerald-200"
-                      : "hover:bg-slate-50"
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="relative">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-200 text-sm font-semibold text-slate-600">
-                        {chatUser.avatar}
-                      </div>
-                      {chatUser.isOnline && (
-                        <div className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white bg-emerald-500" />
-                      )}
+      <div className="flex h-[calc(100vh-65px)]">
+        {/* Users Sidebar */}
+        <div className="w-72 border-r border-slate-200 bg-white">
+          <div className="p-3">
+            <div className="relative">
+              <FiSearch className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search users..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-10 pr-4 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              />
+            </div>
+          </div>
+
+          {/* Broadcast Option */}
+          <div
+            onClick={() => setSelectedUser(null)}
+            className={`mx-3 mb-2 cursor-pointer rounded-lg p-3 transition ${
+              selectedUser === null
+                ? "bg-emerald-50 border border-emerald-200"
+                : "hover:bg-slate-50"
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100">
+                <FiUsers className="h-5 w-5 text-emerald-600" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-slate-900">Broadcast</p>
+                <p className="text-xs text-slate-500">Send to all team</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="px-3 py-2">
+            <p className="text-xs font-medium uppercase text-slate-400">
+              Team Members ({filteredUsers.length})
+            </p>
+          </div>
+
+          <div
+            className="overflow-y-auto"
+            style={{ maxHeight: "calc(100vh - 220px)" }}
+          >
+            {filteredUsers.map((chatUser) => (
+              <div
+                key={chatUser.id}
+                onClick={() => setSelectedUser(chatUser)}
+                className={`mx-3 mb-2 cursor-pointer rounded-lg p-3 transition ${
+                  selectedUser?.id === chatUser.id
+                    ? "bg-emerald-50 border border-emerald-200"
+                    : "hover:bg-slate-50"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="relative">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-200 text-sm font-semibold text-slate-600">
+                      {chatUser.avatar}
                     </div>
-                    <div className="flex-1 overflow-hidden">
-                      <p className="truncate text-sm font-medium text-slate-900">
-                        {chatUser.name}
-                      </p>
-                      <p className="truncate text-xs text-slate-500">
-                        {chatUser.role}
+                    {chatUser.isOnline && (
+                      <div className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white bg-emerald-500" />
+                    )}
+                  </div>
+                  <div className="flex-1 overflow-hidden">
+                    <p className="truncate text-sm font-medium text-slate-900">
+                      {chatUser.name}
+                    </p>
+                    <p className="truncate text-xs text-slate-500">
+                      {chatUser.role}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {filteredUsers.length === 0 && (
+              <div className="py-8 text-center">
+                <FiUsers className="mx-auto h-8 w-8 text-slate-300" />
+                <p className="mt-2 text-xs text-slate-500">No users found</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Chat Area */}
+        <div className="flex flex-1 flex-col bg-slate-50">
+          {/* Chat Header */}
+          <div className="flex items-center justify-between border-b border-slate-200 bg-white px-5 py-3">
+            <div className="flex items-center gap-3">
+              {selectedUser ? (
+                <>
+                  <div className="relative">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-200 text-sm font-semibold text-slate-600">
+                      {selectedUser.avatar}
+                    </div>
+                    {selectedUser.isOnline && (
+                      <div className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white bg-emerald-500" />
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-slate-900">
+                      {selectedUser.name}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {selectedUser.isOnline ? "Online" : "Offline"} •{" "}
+                      {selectedUser.role}
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100">
+                    <FiUsers className="h-5 w-5 text-emerald-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-slate-900">
+                      Team Broadcast
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      Messages visible to all team members
+                    </p>
+                  </div>
+                </>
+              )}
+            </div>
+            <button className="rounded-lg p-2 text-slate-400 hover:bg-slate-100">
+              <FiMoreVertical className="h-5 w-5" />
+            </button>
+          </div>
+
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto p-5">
+            {filteredMessages.length === 0 ? (
+              <div className="flex h-full flex-col items-center justify-center">
+                <FiMessageCircle className="h-12 w-12 text-slate-300" />
+                <p className="mt-2 text-sm text-slate-500">No messages yet</p>
+                <p className="text-xs text-slate-400">
+                  {selectedUser
+                    ? `Start a conversation with ${selectedUser.name}`
+                    : "Send a broadcast message to all team members"}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {filteredMessages.map((msg) => (
+                  <div
+                    key={msg.id}
+                    className={`flex ${
+                      msg.isMine ? "justify-end" : "justify-start"
+                    }`}
+                  >
+                    <div
+                      className={`max-w-[70%] rounded-2xl px-4 py-2 ${
+                        msg.isMine
+                          ? "bg-emerald-600 text-white"
+                          : "bg-white text-slate-900 shadow-sm border border-slate-100"
+                      }`}
+                    >
+                      {!msg.isMine && (
+                        <p
+                          className={`text-xs font-medium mb-1 ${
+                            msg.isMine ? "text-emerald-100" : "text-emerald-600"
+                          }`}
+                        >
+                          {msg.senderName}
+                          <span
+                            className={`ml-1 ${
+                              msg.isMine ? "text-emerald-200" : "text-slate-400"
+                            }`}
+                          >
+                            • {msg.senderRole}
+                          </span>
+                        </p>
+                      )}
+                      <p className="text-sm">{msg.message}</p>
+                      <p
+                        className={`mt-1 text-xs ${
+                          msg.isMine ? "text-emerald-200" : "text-slate-400"
+                        }`}
+                      >
+                        {new Date(msg.timestamp).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
                       </p>
                     </div>
                   </div>
-                </div>
-              ))}
-
-              {filteredUsers.length === 0 && (
-                <div className="py-8 text-center">
-                  <FiUsers className="mx-auto h-8 w-8 text-slate-300" />
-                  <p className="mt-2 text-xs text-slate-500">No users found</p>
-                </div>
-              )}
-            </div>
+                ))}
+                <div ref={messagesEndRef} />
+              </div>
+            )}
           </div>
 
-          {/* Chat Area */}
-          <div className="flex flex-1 flex-col bg-slate-50">
-            {/* Chat Header */}
-            <div className="flex items-center justify-between border-b border-slate-200 bg-white px-5 py-3">
-              <div className="flex items-center gap-3">
-                {selectedUser ? (
-                  <>
-                    <div className="relative">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-200 text-sm font-semibold text-slate-600">
-                        {selectedUser.avatar}
-                      </div>
-                      {selectedUser.isOnline && (
-                        <div className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white bg-emerald-500" />
-                      )}
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-slate-900">
-                        {selectedUser.name}
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        {selectedUser.isOnline ? "Online" : "Offline"} • {selectedUser.role}
-                      </p>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100">
-                      <FiUsers className="h-5 w-5 text-emerald-600" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-slate-900">
-                        Team Broadcast
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        Messages visible to all team members
-                      </p>
-                    </div>
-                  </>
-                )}
-              </div>
-              <button className="rounded-lg p-2 text-slate-400 hover:bg-slate-100">
-                <FiMoreVertical className="h-5 w-5" />
+          {/* Message Input */}
+          <div className="border-t border-slate-200 bg-white p-4">
+            <div className="flex items-center gap-3">
+              <input
+                type="text"
+                placeholder={
+                  selectedUser
+                    ? `Message ${selectedUser.name}...`
+                    : "Broadcast message to team..."
+                }
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                onKeyPress={handleKeyPress}
+                className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              />
+              <button
+                onClick={sendMessage}
+                disabled={!newMessage.trim() || !isConnected}
+                className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-600 text-white transition hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed"
+              >
+                <FiSend className="h-4 w-4" />
               </button>
             </div>
-
-            {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-5">
-              {filteredMessages.length === 0 ? (
-                <div className="flex h-full flex-col items-center justify-center">
-                  <FiMessageCircle className="h-12 w-12 text-slate-300" />
-                  <p className="mt-2 text-sm text-slate-500">No messages yet</p>
-                  <p className="text-xs text-slate-400">
-                    {selectedUser
-                      ? `Start a conversation with ${selectedUser.name}`
-                      : "Send a broadcast message to all team members"}
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {filteredMessages.map((msg) => (
-                    <div
-                      key={msg.id}
-                      className={`flex ${msg.isMine ? "justify-end" : "justify-start"}`}
-                    >
-                      <div
-                        className={`max-w-[70%] rounded-2xl px-4 py-2 ${
-                          msg.isMine
-                            ? "bg-emerald-600 text-white"
-                            : "bg-white text-slate-900 shadow-sm border border-slate-100"
-                        }`}
-                      >
-                        {!msg.isMine && (
-                          <p className={`text-xs font-medium mb-1 ${
-                            msg.isMine ? "text-emerald-100" : "text-emerald-600"
-                          }`}>
-                            {msg.senderName}
-                            <span className={`ml-1 ${msg.isMine ? "text-emerald-200" : "text-slate-400"}`}>
-                              • {msg.senderRole}
-                            </span>
-                          </p>
-                        )}
-                        <p className="text-sm">{msg.message}</p>
-                        <p
-                          className={`mt-1 text-xs ${
-                            msg.isMine ? "text-emerald-200" : "text-slate-400"
-                          }`}
-                        >
-                          {new Date(msg.timestamp).toLocaleTimeString([], {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </p>
-                      </div >
-                    </div>
-                  ))}
-                  <div ref={messagesEndRef} />
-                </div>
-              )}
-            </div>
-
-            {/* Message Input */}
-            <div className="border-t border-slate-200 bg-white p-4">
-              <div className="flex items-center gap-3">
-                <input
-                  type="text"
-                  placeholder={
-                    selectedUser
-                      ? `Message ${selectedUser.name}...`
-                      : "Broadcast message to team..."
-                  }
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                  onKeyPress={handleKeyPress}
-                  className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                />
-                <button
-                  onClick={sendMessage}
-                  disabled={!newMessage.trim() || !isConnected}
-                  className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-600 text-white transition hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed"
-                >
-                  <FiSend className="h-4 w-4" />
-                </button>
-              </div>
-              {!isConnected && (
-                <p className="mt-2 text-xs text-red-500">
-                  Not connected to chat server. Messages cannot be sent.
-                </p>
-              )}
-            </div>
+            {!isConnected && (
+              <p className="mt-2 text-xs text-red-500">
+                Not connected to chat server. Messages cannot be sent.
+              </p>
+            )}
           </div>
         </div>
       </div>
+    </div>
   );
 }
-
-

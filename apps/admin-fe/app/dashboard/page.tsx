@@ -16,6 +16,26 @@ import {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
+/** Fetch JSON and return { success, data?, error?, status } - never throws for HTTP errors */
+async function fetchJson(url: string, headers: HeadersInit): Promise<{ success: boolean; data?: unknown; error?: string; status?: number }> {
+  try {
+    const res = await fetch(url, { headers });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = typeof (body as { error?: string }).error === "string"
+        ? (body as { error: string }).error
+        : `HTTP ${res.status}`;
+      return { success: false, error: msg, status: res.status };
+    }
+    return body && typeof (body as { success?: boolean }).success === "boolean"
+      ? (body as { success: boolean; data?: unknown; error?: string })
+      : { success: true, data: body };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Network error";
+    return { success: false, error: msg };
+  }
+}
+
 interface User {
   id: string;
   email: string;
@@ -59,9 +79,9 @@ export default function AdminDashboardPage() {
     const headers = { Authorization: `Bearer ${token}` };
 
     try {
-      // Fetch all dashboard data in parallel
+      // Fetch all dashboard data in parallel (stats via fetchJson for clear error handling)
       const results = await Promise.allSettled([
-        fetch(`${API_BASE}/api/admin/stats`, { headers }).then(r => r.json()),
+        fetchJson(`${API_BASE}/api/admin/stats`, headers),
         fetch(`${API_BASE}/api/audit-trail?limit=10`, { headers }).then(r => r.json()),
         fetch(`${API_BASE}/api/batch?limit=5`, { headers }).then(r => r.json()),
         fetch(`${API_BASE}/api/batch?limit=200`, { headers }).then(r => r.json()),
@@ -69,10 +89,15 @@ export default function AdminDashboardPage() {
       ]);
 
       // Process stats from admin endpoint
-      if (results[0].status === 'fulfilled' && results[0].value.success) {
-        setStats(results[0].value.data);
+      const statsResult = results[0].status === "fulfilled" ? results[0].value : null;
+      const statsData = statsResult?.success && statsResult.data && typeof statsResult.data === "object" && "users" in statsResult.data
+        ? (statsResult.data as DashboardStats)
+        : null;
+      if (statsData) {
+        setStats(statsData);
       } else {
-        console.error('Failed to fetch admin stats:', results[0]);
+        const errMsg = statsResult?.error ?? (results[0].status === "rejected" ? String((results[0] as PromiseRejectedResult).reason) : "Invalid or empty response");
+        console.error("Failed to fetch admin stats:", errMsg, statsResult?.status ? `(HTTP ${statsResult.status})` : "");
         // Fallback to default stats
         setStats({
           users: { total: 0, manufacturers: 0, distributors: 0, pharmacies: 0, admins: 0 },

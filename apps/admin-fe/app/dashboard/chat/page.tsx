@@ -46,6 +46,10 @@ export default function ChatPage() {
   const wsRef = useRef<WebSocket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const selectedUserRef = useRef<string | null>(null);
+  const userRef = useRef<User | null>(null);
+  const initialSelectionApplied = useRef(false);
+  const connectWebSocketRef = useRef<(() => void) | undefined>(undefined);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -67,12 +71,18 @@ export default function ChatPage() {
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          
+
           if (data.type === "AUTH" && data.payload?.success) {
             setIsConnected(true);
             console.log("WebSocket authenticated:", data.payload);
-          } else if (data.type === "ERROR" || (data.type === "AUTH" && !data.payload?.success)) {
-            console.error("WebSocket error:", data.error || data.payload?.error);
+          } else if (
+            data.type === "ERROR" ||
+            (data.type === "AUTH" && !data.payload?.success)
+          ) {
+            console.error(
+              "WebSocket error:",
+              data.error || data.payload?.error,
+            );
             setIsConnected(false);
           } else if (data.type === "CHAT_RECEIVED") {
             const chatMsg: ChatMessage = {
@@ -84,7 +94,34 @@ export default function ChatPage() {
               recipientId: data.payload.recipientId,
               timestamp: data.payload.timestamp,
             };
-            setMessages((prev) => [...prev, chatMsg]);
+            setMessages((prev) => {
+              const sel = selectedUserRef.current;
+              const u = userRef.current;
+              const forCurrentView =
+                sel === null
+                  ? !data.payload.recipientId
+                  : (data.payload.senderId === u?.id &&
+                      data.payload.recipientId === sel) ||
+                    (data.payload.senderId === sel &&
+                      data.payload.recipientId === u?.id);
+              if (!forCurrentView) return prev;
+              if (
+                prev.some(
+                  (m) =>
+                    m.id === chatMsg.id ||
+                    (m.timestamp === chatMsg.timestamp &&
+                      m.message === chatMsg.message),
+                )
+              )
+                return prev;
+              const next = [...prev, chatMsg];
+              next.sort(
+                (a, b) =>
+                  new Date(a.timestamp).getTime() -
+                  new Date(b.timestamp).getTime(),
+              );
+              return next;
+            });
           }
         } catch (err) {
           console.error("Failed to parse message:", err);
@@ -96,7 +133,7 @@ export default function ChatPage() {
         setIsConnected(false);
         // Reconnect after 3 seconds
         reconnectTimeoutRef.current = setTimeout(() => {
-          connectWebSocket();
+          connectWebSocketRef.current?.();
         }, 3000);
       };
 
@@ -108,30 +145,116 @@ export default function ChatPage() {
     }
   }, []);
 
+  useEffect(() => {
+    connectWebSocketRef.current = connectWebSocket;
+  }, [connectWebSocket]);
+
+  useEffect(() => {
+    selectedUserRef.current = selectedUser;
+  }, [selectedUser]);
+
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
   const fetchManufacturers = useCallback(async () => {
     const token = localStorage.getItem("token");
     if (!token) return;
 
     try {
-      const [usersRes] = await Promise.all([
-        fetch(`${API_BASE}/api/user?role=MANUFACTURER&limit=100`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-      ]);
-      
-      const usersData = await usersRes.json();
-      if (usersData.success) {
-        const mfUsers = (usersData.data || []).map((u: any) => ({
-          id: u.id,
-          name: u.name || u.email,
-          email: u.email,
-          role: u.role,
-          isOnline: false, // We'd need real-time status for this
-        }));
-        setManufacturers(mfUsers);
+      const res = await fetch(`${API_BASE}/api/chat/users`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.success) {
+        const list: OnlineUser[] = (data.data || [])
+          .filter((u: OnlineUser) => u.role === "MANUFACTURER")
+          .map((u: OnlineUser) => ({
+            id: u.id,
+            name: u.name || u.email,
+            email: u.email,
+            role: u.role,
+            isOnline: u.isOnline ?? false,
+          }));
+        setManufacturers(list);
+
+        // Restore last selected conversation (WhatsApp-style) on load
+        if (!initialSelectionApplied.current) {
+          const saved = localStorage.getItem("admin-chat-last-target");
+          if (saved && list.some((u) => u.id === saved)) {
+            setSelectedUser(saved);
+          } else {
+            setSelectedUser(null);
+          }
+          initialSelectionApplied.current = true;
+        }
       }
     } catch (error) {
       console.error("Failed to fetch manufacturers:", error);
+    }
+  }, []);
+
+  /** Load persisted chat history so messages survive refresh */
+  const fetchChatHistory = useCallback(async (recipientId: string | null) => {
+    const token = localStorage.getItem("token");
+    console.log(
+      "[ChatHistory] fetchChatHistory called, recipientId:",
+      recipientId,
+      "token exists:",
+      !!token,
+    );
+    if (!token) return;
+
+    const requestKey = recipientId ?? "all";
+    try {
+      const url = recipientId
+        ? `${API_BASE}/api/chat/history?recipientId=${encodeURIComponent(
+            recipientId,
+          )}&limit=100`
+        : `${API_BASE}/api/chat/history?limit=50`;
+      console.log("[ChatHistory] Fetching from:", url);
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      console.log("[ChatHistory] API Response:", data);
+      // Only apply if we're still viewing the same conversation (avoid stale response overwriting)
+      if ((selectedUserRef.current ?? "all") !== requestKey) {
+        console.log("[ChatHistory] Skipping stale response");
+        return;
+      }
+      if (data.success && Array.isArray(data.data)) {
+        const list: ChatMessage[] = data.data.map((m: {
+          id: string;
+          message: string;
+          senderId: string;
+          senderName?: string | null;
+          senderRole?: string | null;
+          recipientId?: string | null;
+          timestamp?: string;
+          createdAt?: string;
+        }) => ({
+          id: m.id,
+          message: m.message,
+          senderId: m.senderId,
+          senderName: m.senderName ?? m.senderId,
+          senderRole: m.senderRole ?? "",
+          recipientId: m.recipientId,
+          timestamp: m.timestamp ?? m.createdAt,
+        }));
+        list.sort(
+          (a, b) =>
+            new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+        );
+        console.log("[ChatHistory] Setting messages:", list.length, "messages");
+        setMessages(list);
+      } else {
+        console.log("[ChatHistory] No data or not success, clearing messages");
+        setMessages([]);
+      }
+    } catch (error) {
+      console.error("Failed to fetch chat history:", error);
+      if ((selectedUserRef.current ?? "all") === requestKey) setMessages([]);
     }
   }, []);
 
@@ -150,6 +273,7 @@ export default function ChatPage() {
         router.push("/login");
         return;
       }
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setUser(parsedUser);
       fetchManufacturers();
       connectWebSocket();
@@ -172,6 +296,32 @@ export default function ChatPage() {
     scrollToBottom();
   }, [messages]);
 
+  // Load persisted chat history when selecting a user (or "All") so messages survive refresh
+  useEffect(() => {
+    console.log(
+      "[ChatHistory] useEffect triggered, user:",
+      user?.id,
+      "selectedUser:",
+      selectedUser,
+    );
+    if (!user) {
+      console.log("[ChatHistory] No user yet, skipping");
+      return;
+    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchChatHistory(selectedUser);
+  }, [selectedUser, user?.id, fetchChatHistory]);
+
+  // Persist last selected conversation so it reopens after login/refresh
+  useEffect(() => {
+    if (!initialSelectionApplied.current) return;
+    if (selectedUser === null) {
+      localStorage.setItem("admin-chat-last-target", "all");
+    } else {
+      localStorage.setItem("admin-chat-last-target", selectedUser);
+    }
+  }, [selectedUser]);
+
   const handleLogout = () => {
     if (wsRef.current) {
       wsRef.current.close();
@@ -182,7 +332,12 @@ export default function ChatPage() {
   };
 
   const sendMessage = () => {
-    if (!newMessage.trim() || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    if (
+      !newMessage.trim() ||
+      !wsRef.current ||
+      wsRef.current.readyState !== WebSocket.OPEN
+    )
+      return;
 
     const messageData = {
       type: "CHAT",
@@ -214,18 +369,34 @@ export default function ChatPage() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <Sidebar user={user} onLogout={handleLogout} isCollapsed={isCollapsed} onToggle={() => setIsCollapsed((prev) => !prev)} />
+      <Sidebar
+        user={user}
+        onLogout={handleLogout}
+        isCollapsed={isCollapsed}
+        onToggle={() => setIsCollapsed((prev) => !prev)}
+      />
 
-      <main className="min-h-screen transition-all duration-200" style={{ marginLeft: isCollapsed ? 72 : 280 }}>
+      <main
+        className="min-h-screen transition-all duration-200"
+        style={{ marginLeft: isCollapsed ? 72 : 280 }}
+      >
         <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur-sm">
           <div className="flex items-center justify-between px-6 py-4">
             <div>
               <h1 className="text-xl font-bold text-slate-900">Chat</h1>
-              <p className="text-sm text-slate-500">Communicate with manufacturers in real-time</p>
+              <p className="text-sm text-slate-500">
+                Communicate with manufacturers in real-time
+              </p>
             </div>
             <div className="flex items-center gap-2">
-              <div className={`h-2 w-2 rounded-full ${isConnected ? "bg-emerald-500" : "bg-red-500"}`} />
-              <span className="text-sm text-slate-600">{isConnected ? "Connected" : "Disconnected"}</span>
+              <div
+                className={`h-2 w-2 rounded-full ${
+                  isConnected ? "bg-emerald-500" : "bg-red-500"
+                }`}
+              />
+              <span className="text-sm text-slate-600">
+                {isConnected ? "Connected" : "Disconnected"}
+              </span>
             </div>
           </div>
         </header>
@@ -235,13 +406,17 @@ export default function ChatPage() {
           <div className="w-64 border-r border-slate-200 bg-white flex flex-col">
             <div className="p-4 border-b border-slate-100">
               <h3 className="font-semibold text-slate-900">Manufacturers</h3>
-              <p className="text-xs text-slate-500">{manufacturers.length} registered</p>
+              <p className="text-xs text-slate-500">
+                {manufacturers.length} registered
+              </p>
             </div>
             <div className="flex-1 overflow-y-auto">
               <button
                 onClick={() => setSelectedUser(null)}
                 className={`w-full px-4 py-3 text-left border-b border-slate-50 hover:bg-slate-50 ${
-                  selectedUser === null ? "bg-emerald-50 border-l-2 border-l-emerald-500" : ""
+                  selectedUser === null
+                    ? "bg-emerald-50 border-l-2 border-l-emerald-500"
+                    : ""
                 }`}
               >
                 <p className="font-medium text-slate-900">All Manufacturers</p>
@@ -252,7 +427,9 @@ export default function ChatPage() {
                   key={mf.id}
                   onClick={() => setSelectedUser(mf.id)}
                   className={`w-full px-4 py-3 text-left border-b border-slate-50 hover:bg-slate-50 ${
-                    selectedUser === mf.id ? "bg-emerald-50 border-l-2 border-l-emerald-500" : ""
+                    selectedUser === mf.id
+                      ? "bg-emerald-50 border-l-2 border-l-emerald-500"
+                      : ""
                   }`}
                 >
                   <div className="flex items-center gap-2">
@@ -260,14 +437,20 @@ export default function ChatPage() {
                       {mf.name[0].toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-slate-900 truncate">{mf.name}</p>
-                      <p className="text-xs text-slate-500 truncate">{mf.email}</p>
+                      <p className="font-medium text-slate-900 truncate">
+                        {mf.name}
+                      </p>
+                      <p className="text-xs text-slate-500 truncate">
+                        {mf.email}
+                      </p>
                     </div>
                   </div>
                 </button>
               ))}
               {manufacturers.length === 0 && (
-                <div className="p-4 text-center text-sm text-slate-400">No manufacturers found</div>
+                <div className="p-4 text-center text-sm text-slate-400">
+                  No manufacturers found
+                </div>
               )}
             </div>
           </div>
@@ -277,43 +460,80 @@ export default function ChatPage() {
             {/* Chat Header */}
             <div className="px-6 py-3 bg-white border-b border-slate-200">
               <h3 className="font-semibold text-slate-900">
-                {selectedUser 
-                  ? manufacturers.find(m => m.id === selectedUser)?.name || "Direct Message"
+                {selectedUser
+                  ? manufacturers.find((m) => m.id === selectedUser)?.name ||
+                    "Direct Message"
                   : "All Manufacturers (Broadcast)"}
               </h3>
               <p className="text-xs text-slate-500">
-                {selectedUser ? "Private conversation" : "Message will be sent to all connected manufacturers"}
+                {selectedUser
+                  ? "Private conversation"
+                  : "Message will be sent to all connected manufacturers"}
               </p>
             </div>
 
-            {/* Messages */}
+            {/* Messages (when "All Manufacturers" selected, show only broadcast messages) */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              {messages.length === 0 ? (
+              {(selectedUser === null
+                ? messages.filter((m) => !m.recipientId)
+                : messages
+              ).length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-slate-400">
-                  <svg className="h-16 w-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                  <svg
+                    className="h-16 w-16 mb-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={1.5}
+                      d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                    />
                   </svg>
                   <p className="text-lg font-medium">No messages yet</p>
-                  <p className="text-sm">Start a conversation with manufacturers</p>
+                  <p className="text-sm">
+                    Start a conversation with manufacturers
+                  </p>
                 </div>
               ) : (
-                messages.map((msg) => {
+                (selectedUser === null
+                  ? messages.filter((m) => !m.recipientId)
+                  : messages
+                ).map((msg) => {
                   const isOwn = msg.senderId === user?.id;
                   return (
-                    <div key={msg.id} className={`flex ${isOwn ? "justify-end" : "justify-start"}`}>
-                      <div className={`max-w-[70%] rounded-2xl px-4 py-2 ${
-                        isOwn 
-                          ? "bg-emerald-600 text-white rounded-br-sm" 
-                          : "bg-white border border-slate-200 text-slate-800 rounded-bl-sm"
-                      }`}>
+                    <div
+                      key={msg.id}
+                      className={`flex ${
+                        isOwn ? "justify-end" : "justify-start"
+                      }`}
+                    >
+                      <div
+                        className={`max-w-[70%] rounded-2xl px-4 py-2 ${
+                          isOwn
+                            ? "bg-emerald-600 text-white rounded-br-sm"
+                            : "bg-white border border-slate-200 text-slate-800 rounded-bl-sm"
+                        }`}
+                      >
                         {!isOwn && (
                           <p className="text-xs font-semibold text-emerald-600 mb-1">
                             {msg.senderName} ({msg.senderRole})
                           </p>
                         )}
-                        <p className="whitespace-pre-wrap break-words">{msg.message}</p>
-                        <p className={`text-xs mt-1 ${isOwn ? "text-emerald-200" : "text-slate-400"}`}>
-                          {new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        <p className="whitespace-pre-wrap break-words">
+                          {msg.message}
+                        </p>
+                        <p
+                          className={`text-xs mt-1 ${
+                            isOwn ? "text-emerald-200" : "text-slate-400"
+                          }`}
+                        >
+                          {new Date(msg.timestamp).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
                         </p>
                       </div>
                     </div>
@@ -331,7 +551,9 @@ export default function ChatPage() {
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
                   onKeyPress={handleKeyPress}
-                  placeholder={isConnected ? "Type a message..." : "Connecting..."}
+                  placeholder={
+                    isConnected ? "Type a message..." : "Connecting..."
+                  }
                   disabled={!isConnected}
                   className="flex-1 rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-emerald-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400"
                 />
@@ -340,13 +562,25 @@ export default function ChatPage() {
                   disabled={!isConnected || !newMessage.trim()}
                   className="rounded-xl bg-emerald-600 px-6 py-3 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                  <svg
+                    className="h-5 w-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                    />
                   </svg>
                 </button>
               </div>
               {!isConnected && (
-                <p className="mt-2 text-xs text-amber-600">Reconnecting to server...</p>
+                <p className="mt-2 text-xs text-amber-600">
+                  Reconnecting to server...
+                </p>
               )}
             </div>
           </div>
