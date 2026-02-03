@@ -1,7 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useMemo } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Sidebar } from "../../components/sidebar";
 import { 
   ChartCard, 
@@ -16,61 +17,23 @@ import { DataTable, StatusBadge } from "../../components/data-table";
 import { ActivityFeed } from "../../components/activity-feed";
 import { QuickAction, ProgressCard, AlertCard } from "../../components/cards";
 import { DashboardHeader } from "../../components/DashboardHeader";
-import { isAuthenticated, getToken, getUser, clearAuth } from "../../utils/auth";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+import { isAuthenticated, getUser, clearAuth } from "../../utils/auth";
+import {
+  useAnalyticsDashboard,
+  useBatchesWithDetails,
+  useAuditTrail,
+  useQRCodeStats,
+  useBatchesForTrend,
+  useShipmentsForTrend,
+  type AnalyticsDashboard,
+  type AuditEntry,
+} from "../../hooks/useManufacturer";
 
 interface User {
   id: string;
   email: string;
   name: string | null;
   role: string;
-}
-
-interface DashboardData {
-  summary: {
-    totalBatches: number;
-    totalUnits: number;
-    totalScans: number;
-    verifiedScans: number;
-    counterfeitScans: number;
-    verificationRate: string | number;
-    totalShipments: number;
-    deliveredShipments: number;
-    pendingShipments: number;
-  };
-  batchStats: {
-    totalBatches: number;
-    validBatches: number;
-    recalledBatches: number;
-    expiredBatches: number;
-    lifecycle: {
-      inProduction: number;
-      inTransit: number;
-      atDistributor: number;
-      atPharmacy: number;
-      sold: number;
-    };
-  };
-  productionTrend: Array<{ label: string; value: number; date: string }>;
-  topProducts: Array<{
-    name: string;
-    units: number;
-    batchCount: number;
-    rank: number;
-    growth: string;
-  }>;
-}
-
-interface BatchItem {
-  id: string;
-  batchNumber: string;
-  medicine?: { name: string; strength: string };
-  quantity: number;
-  manufacturingDate: string;
-  expiryDate: string;
-  status: string;
-  lifecycleStatus: string;
 }
 
 interface Activity {
@@ -83,107 +46,69 @@ interface Activity {
 
 export default function DashboardPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
-  const [recentBatches, setRecentBatches] = useState<BatchItem[]>([]);
-  const [activities, setActivities] = useState<Activity[]>([]);
-  const [qrCount, setQrCount] = useState(0);
-  const [scanCount, setScanCount] = useState(0);
-  const [shipmentData, setShipmentData] = useState({ delivered: 0, pending: 0, inTransit: 0 });
-  const [weeklyTrend, setWeeklyTrend] = useState<{ batches: number[]; shipments: number[]; labels: string[] }>({
-    batches: [], shipments: [], labels: []
-  });
+  const [isAuthChecked, setIsAuthChecked] = useState(false);
 
-  const fetchDashboardData = useCallback(async () => {
-    const token = getToken();
-    if (!token) return;
+  // React Query hooks - data is cached automatically!
+  const { data: dashboardData, isLoading: dashboardLoading } = useAnalyticsDashboard(30);
+  const { data: recentBatches = [] } = useBatchesWithDetails(5);
+  const { data: auditTrail = [] } = useAuditTrail(5);
+  const { data: qrCodeResponse } = useQRCodeStats();
+  const { data: batchesForTrend = [] } = useBatchesForTrend(100);
+  const { data: shipmentsForTrend = [] } = useShipmentsForTrend(100);
 
-    const headers = { Authorization: `Bearer ${token}` };
+  // Calculate derived data
+  const qrCount = qrCodeResponse?.stats?.totalQRCodes || qrCodeResponse?.pagination?.total || 0;
+  const scanCount = qrCodeResponse?.stats?.totalScans || 0;
 
-    try {
-      const results = await Promise.allSettled([
-        fetch(`${API_BASE}/api/analytics/dashboard?days=30`, { headers }).then(r => r.json()),
-        fetch(`${API_BASE}/api/batch?limit=5`, { headers }).then(r => r.json()),
-        fetch(`${API_BASE}/api/audit-trail?limit=5`, { headers }).then(r => r.json()),
-        fetch(`${API_BASE}/api/qr-code?limit=1`, { headers }).then(r => r.json()),
-        fetch(`${API_BASE}/api/shipment?limit=100`, { headers }).then(r => r.json()),
-        fetch(`${API_BASE}/api/batch?limit=100`, { headers }).then(r => r.json()),
-      ]);
+  // Calculate shipment status from trend data
+  const shipmentData = useMemo(() => {
+    return {
+      delivered: shipmentsForTrend.filter((s) => s.status === 'DELIVERED').length,
+      pending: shipmentsForTrend.filter((s) => s.status === 'PENDING').length,
+      inTransit: shipmentsForTrend.filter((s) => s.status === 'IN_TRANSIT').length,
+    };
+  }, [shipmentsForTrend]);
 
-      // Process analytics data
-      if (results[0].status === 'fulfilled' && results[0].value.success) {
-        setDashboardData(results[0].value.data);
-      }
+  // Calculate weekly trends from batches and shipments
+  const weeklyTrend = useMemo(() => {
+    const last7Days = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - (6 - i));
+      return d.toISOString().split('T')[0];
+    });
+    const dayLabels = last7Days.map(d => new Date(d).toLocaleDateString('en', { weekday: 'short' }));
 
-      // Process batches data for table
-      if (results[1].status === 'fulfilled' && results[1].value.success) {
-        setRecentBatches(results[1].value.data || []);
-      }
+    const batchTrend = Array(7).fill(0);
+    const shipmentTrend = Array(7).fill(0);
 
-      // Process audit trail data
-      if (results[2].status === 'fulfilled' && results[2].value.success && results[2].value.data) {
-        const mappedActivities = results[2].value.data.map((audit: any) => ({
-          id: audit.id,
-          type: mapAuditToActivityType(audit.entityType, audit.action),
-          title: `${audit.action.replace(/_/g, " ")} ${audit.entityType}`,
-          description: `${audit.entityType} ${audit.entityId?.slice(0, 8) || ""}...`,
-          time: formatTimeAgo(audit.createdAt),
-        }));
-        setActivities(mappedActivities);
-      }
+    batchesForTrend.forEach((b) => {
+      const date = new Date(b.createdAt).toISOString().split('T')[0];
+      const idx = last7Days.indexOf(date);
+      if (idx >= 0) batchTrend[idx]++;
+    });
 
-      // Process QR code data
-      if (results[3].status === 'fulfilled' && results[3].value.success) {
-        const qrData = results[3].value;
-        setQrCount(qrData.stats?.totalQRCodes || qrData.pagination?.total || 0);
-        setScanCount(qrData.stats?.totalScans || 0);
-      }
+    shipmentsForTrend.forEach((s) => {
+      const date = new Date(s.createdAt).toISOString().split('T')[0];
+      const idx = last7Days.indexOf(date);
+      if (idx >= 0) shipmentTrend[idx]++;
+    });
 
-      // Process shipment data for chart
-      if (results[4].status === 'fulfilled' && results[4].value.success) {
-        const shipments = results[4].value.data || [];
-        setShipmentData({
-          delivered: shipments.filter((s: any) => s.status === 'DELIVERED').length,
-          pending: shipments.filter((s: any) => s.status === 'PENDING').length,
-          inTransit: shipments.filter((s: any) => s.status === 'IN_TRANSIT').length,
-        });
-      }
+    return { batches: batchTrend, shipments: shipmentTrend, labels: dayLabels };
+  }, [batchesForTrend, shipmentsForTrend]);
 
-      // Calculate weekly trends
-      const last7Days = Array.from({ length: 7 }, (_, i) => {
-        const d = new Date();
-        d.setDate(d.getDate() - (6 - i));
-        return d.toISOString().split('T')[0];
-      });
-      const dayLabels = last7Days.map(d => new Date(d).toLocaleDateString('en', { weekday: 'short' }));
-
-      let batchTrend = Array(7).fill(0);
-      let shipmentTrend = Array(7).fill(0);
-
-      if (results[5].status === 'fulfilled' && results[5].value.success) {
-        (results[5].value.data || []).forEach((b: any) => {
-          const date = new Date(b.createdAt).toISOString().split('T')[0];
-          const idx = last7Days.indexOf(date);
-          if (idx >= 0) batchTrend[idx]++;
-        });
-      }
-
-      if (results[4].status === 'fulfilled' && results[4].value.success) {
-        (results[4].value.data || []).forEach((s: any) => {
-          const date = new Date(s.createdAt).toISOString().split('T')[0];
-          const idx = last7Days.indexOf(date);
-          if (idx >= 0) shipmentTrend[idx]++;
-        });
-      }
-
-      setWeeklyTrend({ batches: batchTrend, shipments: shipmentTrend, labels: dayLabels });
-
-    } catch (error) {
-      console.error("Failed to fetch dashboard data:", error);
-    }
-  }, []);
+  // Map audit trail to activities
+  const activities: Activity[] = useMemo(() => {
+    return auditTrail.map((audit: AuditEntry) => ({
+      id: audit.id,
+      type: mapAuditToActivityType(audit.entityType, audit.action),
+      title: `${audit.action.replace(/_/g, " ")} ${audit.entityType}`,
+      description: `${audit.entityType} ${audit.entityId?.slice(0, 8) || ""}...`,
+      time: formatTimeAgo(audit.createdAt),
+    }));
+  }, [auditTrail]);
 
   useEffect(() => {
     if (!isAuthenticated()) {
@@ -195,15 +120,26 @@ export default function DashboardPage() {
     const currentUser = getUser();
     if (currentUser) {
       setUser(currentUser);
-      fetchDashboardData().finally(() => setIsLoading(false));
+      setIsAuthChecked(true);
     } else {
       router.push("/login");
     }
-  }, [router, fetchDashboardData]);
+  }, [router]);
+
+  const isLoading = !isAuthChecked || dashboardLoading;
 
   const handleLogout = () => {
     clearAuth();
     router.push("/login");
+  };
+
+  // Refresh all data - refetch all queries used on this page
+  const handleRefresh = () => {
+    queryClient.refetchQueries({ queryKey: ["analytics"] });
+    queryClient.refetchQueries({ queryKey: ["batches"] });
+    queryClient.refetchQueries({ queryKey: ["audit-trail"] });
+    queryClient.refetchQueries({ queryKey: ["qr-codes"] });
+    queryClient.refetchQueries({ queryKey: ["shipments"] });
   };
 
   if (isLoading) {
@@ -272,7 +208,7 @@ export default function DashboardPage() {
           subtitle={`Welcome back, ${user?.name || "Manufacturer"}`}
           actions={
             <div className="flex items-center gap-2">
-              <button onClick={() => fetchDashboardData()} className="flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 hover:bg-slate-50 shadow-sm">
+              <button onClick={handleRefresh} className="flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 hover:bg-slate-50 shadow-sm">
                 <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>

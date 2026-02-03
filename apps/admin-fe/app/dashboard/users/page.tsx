@@ -14,12 +14,15 @@ interface User {
   name: string | null;
   role: string;
   isActive?: boolean;
-  createdAt: string;
+  createdAt?: string;
 }
+
+// Sidebar user type (without createdAt)
+type SidebarUser = Pick<User, "id" | "email" | "name" | "role">;
 
 export default function UsersPage() {
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<SidebarUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
@@ -79,7 +82,9 @@ export default function UsersPage() {
       return;
     }
     setUser(storedUser);
-    Promise.all([fetchUsers(), fetchPharmacyCount()]).finally(() => setIsLoading(false));
+    Promise.all([fetchUsers(), fetchPharmacyCount()]).finally(() =>
+      setIsLoading(false),
+    );
   }, [router, fetchUsers, fetchPharmacyCount]);
 
   const handleLogout = () => {
@@ -89,16 +94,22 @@ export default function UsersPage() {
 
   const getRoleVariant = (role: string) => {
     switch (role) {
-      case "ADMIN": return "info";
-      case "MANUFACTURER": return "success";
-      case "DISTRIBUTOR": return "warning";
-      case "PHARMACY": return "neutral";
-      default: return "neutral";
+      case "ADMIN":
+        return "info";
+      case "MANUFACTURER":
+        return "success";
+      case "DISTRIBUTOR":
+        return "warning";
+      case "PHARMACY":
+        return "neutral";
+      default:
+        return "neutral";
     }
   };
 
-  const filteredUsers = users.filter(u => {
-    const matchesSearch = !search || 
+  const filteredUsers = users.filter((u) => {
+    const matchesSearch =
+      !search ||
       u.name?.toLowerCase().includes(search.toLowerCase()) ||
       u.email.toLowerCase().includes(search.toLowerCase());
     const matchesRole = !roleFilter || u.role === roleFilter;
@@ -129,8 +140,12 @@ export default function UsersPage() {
         <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur-sm">
           <div className="flex items-center justify-between px-6 py-4">
             <div>
-              <h1 className="text-xl font-bold text-slate-900">User Management</h1>
-              <p className="text-sm text-slate-500">Manage all platform users</p>
+              <h1 className="text-xl font-bold text-slate-900">
+                User Management
+              </h1>
+              <p className="text-sm text-slate-500">
+                Manage all platform users
+              </p>
             </div>
           </div>
         </header>
@@ -165,8 +180,18 @@ export default function UsersPage() {
               }}
               className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700"
             >
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                />
               </svg>
               Refresh
             </button>
@@ -176,19 +201,27 @@ export default function UsersPage() {
           <div className="mb-6 grid gap-4 sm:grid-cols-4">
             <div className="rounded-xl border border-slate-200 bg-white p-4">
               <p className="text-xs text-slate-500">Total Users</p>
-              <p className="text-2xl font-bold text-slate-900">{users.length + pharmacyCount}</p>
+              <p className="text-2xl font-bold text-slate-900">
+                {users.length + pharmacyCount}
+              </p>
             </div>
             <div className="rounded-xl border border-slate-200 bg-white p-4">
               <p className="text-xs text-slate-500">Manufacturers</p>
-              <p className="text-2xl font-bold text-emerald-600">{users.filter(u => u.role === "MANUFACTURER").length}</p>
+              <p className="text-2xl font-bold text-emerald-600">
+                {users.filter((u) => u.role === "MANUFACTURER").length}
+              </p>
             </div>
             <div className="rounded-xl border border-slate-200 bg-white p-4">
               <p className="text-xs text-slate-500">Distributors</p>
-              <p className="text-2xl font-bold text-amber-600">{users.filter(u => u.role === "DISTRIBUTOR").length}</p>
+              <p className="text-2xl font-bold text-amber-600">
+                {users.filter((u) => u.role === "DISTRIBUTOR").length}
+              </p>
             </div>
             <div className="rounded-xl border border-slate-200 bg-white p-4">
               <p className="text-xs text-slate-500">Pharmacies</p>
-              <p className="text-2xl font-bold text-blue-600">{pharmacyCount}</p>
+              <p className="text-2xl font-bold text-blue-600">
+                {pharmacyCount}
+              </p>
             </div>
           </div>
 
@@ -205,7 +238,9 @@ export default function UsersPage() {
                         {(item.name || item.email)[0].toUpperCase()}
                       </div>
                       <div>
-                        <p className="font-medium text-slate-900">{item.name || "—"}</p>
+                        <p className="font-medium text-slate-900">
+                          {item.name || "—"}
+                        </p>
                         <p className="text-xs text-slate-500">{item.email}</p>
                       </div>
                     </div>
@@ -215,16 +250,19 @@ export default function UsersPage() {
                   key: "role",
                   label: "Role",
                   render: (item) => (
-                    <StatusBadge status={item.role} variant={getRoleVariant(item.role)} />
+                    <StatusBadge
+                      status={item.role}
+                      variant={getRoleVariant(item.role)}
+                    />
                   ),
                 },
                 {
                   key: "status",
                   label: "Status",
                   render: (item) => (
-                    <StatusBadge 
-                      status={item.isActive !== false ? "Active" : "Inactive"} 
-                      variant={item.isActive !== false ? "success" : "danger"} 
+                    <StatusBadge
+                      status={item.isActive !== false ? "Active" : "Inactive"}
+                      variant={item.isActive !== false ? "success" : "danger"}
                     />
                   ),
                 },
@@ -233,7 +271,9 @@ export default function UsersPage() {
                   label: "Joined",
                   render: (item) => (
                     <span className="text-sm text-slate-600">
-                      {new Date(item.createdAt).toLocaleDateString()}
+                      {item.createdAt
+                        ? new Date(item.createdAt).toLocaleDateString()
+                        : "—"}
                     </span>
                   ),
                 },

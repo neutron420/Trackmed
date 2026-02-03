@@ -185,7 +185,7 @@ async function startServer() {
       console.log(`Health check: http://localhost:${PORT}/health`);
       console.log(`API endpoints: http://localhost:${PORT}/api`);
       console.log(`WebSocket endpoint: ws://localhost:${PORT}/ws`);
-      console.log(`Solana RPC: ${process.env.SOLANA_RPC_URL || 'http://127.0.0.1:8899'} (localnet)`);
+      console.log(`Solana RPC: ${process.env.SOLANA_RPC_URL || 'https://api.devnet.solana.com'} (devnet)`);
       console.log(`Program ID: 48BYj4BVCp7D3EByu6f9nW8uHaFuuFdwJozB7iLZPxhJ`);
 
       // Initialize connection to central WebSocket server

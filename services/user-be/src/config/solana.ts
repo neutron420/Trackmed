@@ -4,9 +4,9 @@ import { Program } from "@coral-xyz/anchor";
 import { IDL } from "../idl/solana_test_project";
 
 // Solana connection configuration
-// Default to localnet for development, use SOLANA_RPC_URL for production
+// Default to devnet, use SOLANA_RPC_URL env var to override
 export const SOLANA_RPC_URL =
-  process.env.SOLANA_RPC_URL || "http://127.0.0.1:8899";
+  process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com";
 export const PROGRAM_ID = new PublicKey(
   "48BYj4BVCp7D3EByu6f9nW8uHaFuuFdwJozB7iLZPxhJ",
 );

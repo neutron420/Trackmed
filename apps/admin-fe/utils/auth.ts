@@ -1,5 +1,5 @@
 // Centralized auth utilities for session management
-// Uses sessionStorage so sessions are cleared when browser closes
+// Uses localStorage for persistence across browser sessions
 // Also implements token expiration checking
 
 const TOKEN_KEY = "token";
@@ -18,8 +18,10 @@ export interface AuthUser {
  * Check if user is authenticated (token exists and not expired)
  */
 export function isAuthenticated(): boolean {
-  const token = sessionStorage.getItem(TOKEN_KEY);
-  const expiresAt = sessionStorage.getItem(EXPIRES_KEY);
+  if (typeof window === 'undefined') return false;
+  
+  const token = localStorage.getItem(TOKEN_KEY);
+  const expiresAt = localStorage.getItem(EXPIRES_KEY);
   
   if (!token) return false;
   
@@ -36,21 +38,23 @@ export function isAuthenticated(): boolean {
  * Get the stored auth token
  */
 export function getToken(): string | null {
+  if (typeof window === 'undefined') return null;
   if (!isAuthenticated()) {
     return null;
   }
-  return sessionStorage.getItem(TOKEN_KEY);
+  return localStorage.getItem(TOKEN_KEY);
 }
 
 /**
  * Get the stored user data
  */
 export function getUser(): AuthUser | null {
+  if (typeof window === 'undefined') return null;
   if (!isAuthenticated()) {
     return null;
   }
   
-  const storedUser = sessionStorage.getItem(USER_KEY);
+  const storedUser = localStorage.getItem(USER_KEY);
   if (!storedUser) return null;
   
   try {
@@ -64,19 +68,21 @@ export function getUser(): AuthUser | null {
  * Store auth credentials after login
  */
 export function setAuth(token: string, user: AuthUser): void {
+  if (typeof window === 'undefined') return;
   const expiresAt = Date.now() + TOKEN_EXPIRY_HOURS * 60 * 60 * 1000;
-  sessionStorage.setItem(TOKEN_KEY, token);
-  sessionStorage.setItem(USER_KEY, JSON.stringify(user));
-  sessionStorage.setItem(EXPIRES_KEY, expiresAt.toString());
+  localStorage.setItem(TOKEN_KEY, token);
+  localStorage.setItem(USER_KEY, JSON.stringify(user));
+  localStorage.setItem(EXPIRES_KEY, expiresAt.toString());
 }
 
 /**
  * Clear all auth data (logout)
  */
 export function clearAuth(): void {
-  sessionStorage.removeItem(TOKEN_KEY);
-  sessionStorage.removeItem(USER_KEY);
-  sessionStorage.removeItem(EXPIRES_KEY);
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
+  localStorage.removeItem(EXPIRES_KEY);
 }
 
 /**
