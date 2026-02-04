@@ -181,12 +181,6 @@ export default function AdminDashboardPage() {
     { label: "Pending", value: safeStats.shipments.pending, color: "#f59e0b" },
   ];
 
-  const deliveryRate = safeStats.shipments.total
-    ? Math.round(
-        (safeStats.shipments.delivered / safeStats.shipments.total) * 100,
-      )
-    : 0;
-
   return (
     <div className="min-h-screen bg-slate-50">
       <Sidebar
