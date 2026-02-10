@@ -5,10 +5,7 @@ import { UserRole } from '@prisma/client';
 
 const router = Router();
 
-/**
- * GET /api/notification
- * Get notifications for the current user with pagination
- */
+
 router.get('/', async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;

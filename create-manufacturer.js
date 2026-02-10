@@ -54,11 +54,11 @@ async function createManufacturer() {
       },
     });
 
-    console.log('✅ Manufacturer created successfully!');
+    console.log(' Manufacturer created successfully!');
     console.log(JSON.stringify(manufacturer, null, 2));
-    console.log('\n📝 You can now create batches using your wallet private key.');
+    console.log('\n You can now create batches using your wallet private key.');
   } catch (error) {
-    console.error('❌ Error creating manufacturer:', error.message);
+    console.error(' Error creating manufacturer:', error.message);
     if (error.code === 'P2002') {
       console.error('   This wallet address or license number already exists.');
     }
