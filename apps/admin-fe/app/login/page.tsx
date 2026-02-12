@@ -64,66 +64,60 @@ export default function AdminLoginPage() {
     <div className="flex min-h-screen">
       {/* Left Side - Blurred Abstract Background */}
       <div className="hidden lg:flex lg:w-[45%] relative overflow-hidden bg-white">
-        {/* Abstract blurred shapes - Matching form's blue aesthetic */}
+        {/* Abstract blurred shapes - Emerald and amber palette */}
         <div className="absolute inset-0">
-          {/* Primary blue chevron - matches form's blue-600 */}
           <div 
             className="absolute top-0 left-0 w-[750px] h-[750px]"
             style={{
-              background: 'linear-gradient(135deg, rgba(37, 99, 235, 0.75) 0%, rgba(59, 130, 246, 0.6) 25%, rgba(96, 165, 250, 0.45) 50%, rgba(147, 197, 253, 0.3) 75%, rgba(219, 234, 254, 0.15) 90%, transparent 100%)',
+              background: 'linear-gradient(135deg, rgba(5, 150, 105, 0.72) 0%, rgba(16, 185, 129, 0.58) 25%, rgba(52, 211, 153, 0.42) 50%, rgba(110, 231, 183, 0.28) 75%, rgba(209, 250, 229, 0.16) 90%, transparent 100%)',
               clipPath: 'polygon(0% 0%, 100% 0%, 55% 100%, 0% 100%)',
               filter: 'blur(80px)',
               transform: 'translate(-15%, -15%) rotate(-8deg)',
             }}
           />
           
-          {/* Soft teal/cyan chevron - complements blue */}
           <div 
             className="absolute top-1/4 left-1/5 w-[700px] h-[700px]"
             style={{
-              background: 'linear-gradient(135deg, rgba(14, 165, 233, 0.7) 0%, rgba(56, 189, 248, 0.55) 25%, rgba(125, 211, 252, 0.4) 50%, rgba(186, 230, 253, 0.25) 75%, transparent 100%)',
+              background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.66) 0%, rgba(34, 211, 238, 0.5) 25%, rgba(103, 232, 249, 0.35) 50%, rgba(165, 243, 252, 0.22) 75%, transparent 100%)',
               clipPath: 'polygon(0% 0%, 100% 0%, 65% 100%, 0% 100%)',
               filter: 'blur(85px)',
               transform: 'translate(-25%, -20%) rotate(12deg)',
             }}
           />
           
-          {/* Light blue accent - subtle overlay */}
           <div 
             className="absolute bottom-0 left-0 w-[650px] h-[650px]"
             style={{
-              background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.65) 0%, rgba(96, 165, 250, 0.5) 30%, rgba(147, 197, 253, 0.35) 60%, rgba(219, 234, 254, 0.2) 85%, transparent 100%)',
+              background: 'linear-gradient(135deg, rgba(13, 148, 136, 0.62) 0%, rgba(20, 184, 166, 0.48) 30%, rgba(45, 212, 191, 0.32) 60%, rgba(153, 246, 228, 0.2) 85%, transparent 100%)',
               clipPath: 'polygon(0% 0%, 100% 0%, 60% 100%, 0% 100%)',
               filter: 'blur(75px)',
               transform: 'translate(-20%, 20%) rotate(-3deg)',
             }}
           />
           
-          {/* Soft indigo accent - adds depth */}
           <div 
             className="absolute top-1/2 left-1/3 w-[550px] h-[550px]"
             style={{
-              background: 'linear-gradient(135deg, rgba(67, 56, 202, 0.6) 0%, rgba(99, 102, 241, 0.45) 40%, rgba(129, 140, 248, 0.3) 70%, transparent 100%)',
+              background: 'linear-gradient(135deg, rgba(180, 83, 9, 0.56) 0%, rgba(217, 119, 6, 0.42) 40%, rgba(245, 158, 11, 0.3) 70%, transparent 100%)',
               clipPath: 'polygon(0% 0%, 100% 0%, 75% 100%, 0% 100%)',
               filter: 'blur(70px)',
               transform: 'translate(-30%, -30%) rotate(20deg)',
             }}
           />
           
-          {/* Blue radial glow - matches button color */}
           <div 
             className="absolute top-1/3 right-1/4 w-[500px] h-[500px]"
             style={{
-              background: 'radial-gradient(circle, rgba(37, 99, 235, 0.6) 0%, rgba(59, 130, 246, 0.45) 30%, rgba(96, 165, 250, 0.3) 60%, rgba(147, 197, 253, 0.15) 85%, transparent 100%)',
+              background: 'radial-gradient(circle, rgba(5, 150, 105, 0.56) 0%, rgba(16, 185, 129, 0.42) 30%, rgba(52, 211, 153, 0.28) 60%, rgba(167, 243, 208, 0.15) 85%, transparent 100%)',
               filter: 'blur(65px)',
             }}
           />
           
-          {/* Soft cyan accent */}
           <div 
             className="absolute bottom-1/4 right-1/3 w-[450px] h-[450px]"
             style={{
-              background: 'radial-gradient(circle, rgba(14, 165, 233, 0.55) 0%, rgba(56, 189, 248, 0.4) 40%, rgba(125, 211, 252, 0.25) 70%, transparent 90%)',
+              background: 'radial-gradient(circle, rgba(217, 119, 6, 0.5) 0%, rgba(245, 158, 11, 0.36) 40%, rgba(251, 191, 36, 0.2) 70%, transparent 90%)',
               filter: 'blur(60px)',
             }}
           />
@@ -156,7 +150,7 @@ export default function AdminLoginPage() {
               <h1 className="text-3xl font-bold text-slate-900">Login</h1>
               <Link 
                 href="/register" 
-                className="text-sm font-medium text-blue-600 hover:text-blue-700 transition-colors"
+                className="text-sm font-medium text-emerald-700 hover:text-emerald-800 transition-colors"
               >
                 Don&apos;t have an account?
               </Link>
@@ -176,7 +170,7 @@ export default function AdminLoginPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                  className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
                 />
               </div>
 
@@ -193,7 +187,7 @@ export default function AdminLoginPage() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
-                    className="w-full px-4 py-2.5 pr-10 border border-slate-300 rounded-lg text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                    className="w-full px-4 py-2.5 pr-10 border border-slate-300 rounded-lg text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
                   />
                   <button
                     type="button"
@@ -221,13 +215,13 @@ export default function AdminLoginPage() {
                     type="checkbox"
                     checked={rememberMe}
                     onChange={(e) => setRememberMe(e.target.checked)}
-                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
                   />
                   <span className="ml-2 text-sm text-slate-600">Keep me sign in</span>
                 </label>
                 <Link 
                   href="/forgot-password" 
-                  className="text-sm font-medium text-blue-600 hover:text-blue-700 transition-colors"
+                  className="text-sm font-medium text-emerald-700 hover:text-emerald-800 transition-colors"
                 >
                   Forgot Password?
                 </Link>
@@ -248,7 +242,7 @@ export default function AdminLoginPage() {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full px-4 py-2.5 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-70 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow-md"
+                className="w-full px-4 py-2.5 bg-emerald-600 text-white font-semibold rounded-lg hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 disabled:opacity-70 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow-md"
               >
                 {isSubmitting ? "Signing in..." : "Login"}
               </button>
