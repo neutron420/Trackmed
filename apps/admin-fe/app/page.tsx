@@ -6,14 +6,24 @@ import { useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { isAuthenticated, isAdmin } from "../utils/auth";
 
-const MANUFACTURER_APP_URL = process.env.NEXT_PUBLIC_MANUFACTURER_APP_URL || "http://localhost:3006";
+const LOCAL_MANUFACTURER_APP_URL = "http://localhost:3006";
+const DEPLOYED_MANUFACTURER_APP_URL = "https://trackmed-manufacturer.vercel.app";
 
 export default function Home() {
   const router = useRouter();
-  const manufacturerLoginUrl = useMemo(
-    () => `${MANUFACTURER_APP_URL.replace(/\/$/, "")}/login`,
-    []
-  );
+  const manufacturerLoginUrl = useMemo(() => {
+    const envUrl = process.env.NEXT_PUBLIC_MANUFACTURER_APP_URL?.trim();
+    if (envUrl) {
+      return `${envUrl.replace(/\/$/, "")}/login`;
+    }
+
+    const isLocalHost =
+      typeof window !== "undefined" &&
+      (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+
+    const baseUrl = isLocalHost ? LOCAL_MANUFACTURER_APP_URL : DEPLOYED_MANUFACTURER_APP_URL;
+    return `${baseUrl.replace(/\/$/, "")}/login`;
+  }, []);
 
   useEffect(() => {
     if (isAuthenticated() && isAdmin()) {
