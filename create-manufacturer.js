@@ -31,7 +31,7 @@ async function createManufacturer() {
     });
 
     if (existing) {
-      console.log('✅ Manufacturer already exists:');
+      console.log(' Manufacturer already exists:');
       console.log(JSON.stringify(existing, null, 2));
       return;
     }
